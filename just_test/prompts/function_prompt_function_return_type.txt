@@ -47,4 +47,4 @@ The function was not called with any inputs.
 
 What is an appropriate prompt?
 
-ASSISTANT: A good prompt is "
+ASSISTANT: A good prompt is

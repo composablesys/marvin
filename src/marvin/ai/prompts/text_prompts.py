@@ -168,7 +168,7 @@ CLASSIFY_PROMPT = inspect.cleandoc(
     """
 )
 
-FUNCTION_PROMPT = inspect.cleandoc(
+FUNCTION_PROMPT_FIRST_ORDER = inspect.cleandoc(
     """
     SYSTEM: Your job is to generate likely outputs for a Python function with the
     following definition:
@@ -207,6 +207,46 @@ FUNCTION_PROMPT = inspect.cleandoc(
     """
 )
 
+FUNCTION_PROMPT_HIGHER_ORDER = inspect.cleandoc(
+    """
+    SYSTEM: Your job is to generate a good prompt for a Large Language Model AI given some arguments.
+    You must respond with a prompt where the user can supply some unseen arguments, and the AI will respond
+    appropriately.
+
+    {{ fn_definition }}
+
+    Essentially you are expected to provide a prompt that is **specialized** to the inputs that the user will give you. 
+    
+    You need to reply with a prompt that describes a function in natural language with the following signature:
+    
+    {{ return_annotation }}
+    
+    HUMAN: 
+
+    ## Function inputs
+
+    {% if bound_parameters -%}
+    The function was called with the following inputs:
+    {%for (arg, value) in bound_parameters.items()%}
+    - {{ arg }}: {{ value }}
+    {% endfor %}
+    {% else %}
+    The function was not called with any inputs.
+    {% endif %}
+
+    {% if return_value -%}
+    ## Additional Context
+
+    I also preprocessed some of the data and have this additional context for you to consider:
+
+    {{return_value}}
+    {% endif %}
+
+    What is an appropriate prompt?
+    
+    ASSISTANT: The good prompt is
+    """
+)
 
 IMAGE_PROMPT = inspect.cleandoc(
     """

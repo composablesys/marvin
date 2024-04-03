@@ -14,6 +14,32 @@ class ParameterModel(BaseModel):
     default: Optional[str]
 
 
+class CallableWithMetaData(BaseModel):
+    name: str
+    signature: inspect.Signature
+    docstring: Optional[str]
+    func: Optional[Callable]
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    @property
+    def __name__(self):
+        return self.name
+
+    @property
+    def __signature__(self):
+        return self.signature
+
+    @property
+    def __doc__(self):
+        return self.docstring
+
+    def __call__(self, *args, **kwargs):
+        if self.func:
+            return self.func(*args, **kwargs)
+
+
 class PythonFunction(BaseModel):
     """
     A Pydantic model representing a Python function.

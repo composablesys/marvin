@@ -16,8 +16,10 @@ from typing import (
     TypeVar,
     Union,
     get_origin,
+    get_args
 )
 
+import pydantic
 from cachetools import LRUCache
 from pydantic import BaseModel
 
@@ -31,7 +33,8 @@ from marvin.ai.prompts.text_prompts import (
     CAST_PROMPT,
     CLASSIFY_PROMPT,
     EXTRACT_PROMPT,
-    FUNCTION_PROMPT,
+    FUNCTION_PROMPT_FIRST_ORDER,
+    FUNCTION_PROMPT_HIGHER_ORDER,
     GENERATE_PROMPT,
 )
 from marvin.client.openai import AsyncMarvinClient, ChatCompletion, MarvinClient
@@ -41,7 +44,7 @@ from marvin.utilities.context import ctx
 from marvin.utilities.jinja import Transcript
 from marvin.utilities.logging import get_logger
 from marvin.utilities.mapping import map_async
-from marvin.utilities.python import PythonFunction
+from marvin.utilities.python import PythonFunction, CallableWithMetaData
 from marvin.utilities.strings import count_tokens
 
 T = TypeVar("T")
@@ -482,6 +485,9 @@ def fn(
     async def async_wrapper(*args, **kwargs):
         model = PythonFunction.from_function_call(func, *args, **kwargs)
         post_processor = marvin.settings.post_processor_fn
+        prompt_template = FUNCTION_PROMPT_FIRST_ORDER
+        extra_prompt_kwargs = {}
+
 
         # written instructions or missing annotations are treated as "-> str"
         if (
@@ -499,15 +505,35 @@ def fn(
             )
             post_processor = lambda result: result.value  # noqa E731
 
+        elif isinstance(model.return_annotation, Callable):
+            type_ = pydantic.create_model("PromptAndName",
+                                          prompt=(str, pydantic.Field(description="Prompt Generated")),
+                                          function_name=(str, pydantic.Field(description="Name of the function that "
+                                                                                         "best reflect this prompt")))
+            args = get_args(model.return_annotation)
+            prompt_template = FUNCTION_PROMPT_HIGHER_ORDER
+            match args:
+                case []:
+                    signature = inspect.Signature([], return_annotation=None)
+                case [param_annotations, return_annotations]:
+                    params = [inspect.Parameter(f"{t.__name__.strip()}{i}", inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                                annotation=t) for i, t in enumerate(param_annotations)]
+                    signature = inspect.Signature(params, return_annotation=return_annotations)
+            # noinspection PyUnboundLocalVariable
+            extra_prompt_kwargs["result_annotation"] = f"{signature}"
+            post_processor = lambda result: fn(CallableWithMetaData(name=result.function_name, # noqa E731
+                                                                    signature=signature,
+                                                                    docstring=result.prompt), model_kwargs, client)
         else:
             type_ = model.return_annotation
 
         result = await _generate_typed_llm_response_with_tool(
-            prompt_template=FUNCTION_PROMPT,
+            prompt_template=prompt_template,
             prompt_kwargs=dict(
                 fn_definition=model.definition,
                 bound_parameters=model.bound_parameters,
                 return_value=model.return_value,
+                **extra_prompt_kwargs
             ),
             type_=type_,
             model_kwargs=model_kwargs,
@@ -521,7 +547,6 @@ def fn(
     if inspect.iscoroutinefunction(func):
         return async_wrapper
     else:
-
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
             return run_sync(async_wrapper(*args, **kwargs))
