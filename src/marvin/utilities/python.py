@@ -17,8 +17,8 @@ class ParameterModel(BaseModel):
 class CallableWithMetaData(BaseModel):
     name: str
     signature: inspect.Signature
-    docstring: Optional[str]
-    func: Optional[Callable]
+    docstring: Optional[str] = ""
+    func: Optional[Callable] = None
 
     class Config:
         arbitrary_types_allowed = True
@@ -112,7 +112,9 @@ class PythonFunction(BaseModel):
             )
             for name, param in sig.parameters.items()
         ]
-        source_code = inspect.getsource(func).strip()
+        source_code = ""
+        if not isinstance(func, CallableWithMetaData):
+            source_code = inspect.getsource(func).strip()
 
         function_dict = {
             "function": func,

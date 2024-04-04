@@ -520,7 +520,7 @@ def fn(
                                                 annotation=t) for i, t in enumerate(param_annotations)]
                     signature = inspect.Signature(params, return_annotation=return_annotations)
             # noinspection PyUnboundLocalVariable
-            extra_prompt_kwargs["result_annotation"] = f"{signature}"
+            extra_prompt_kwargs["return_annotation"] = f"{signature}"
             post_processor = lambda result: fn(CallableWithMetaData(name=result.function_name, # noqa E731
                                                                     signature=signature,
                                                                     docstring=result.prompt), model_kwargs, client)
