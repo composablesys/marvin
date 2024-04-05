@@ -1,17 +1,16 @@
-from typing import List, Callable, Optional
+from typing import Callable
 
 from dotenv import load_dotenv
-
-import inspect
-
-from pydantic import Field
 
 load_dotenv()
 
 import marvin
 
+from pydantic import BaseModel, Field
+
+
 @marvin.fn
-def rating_for_customer(customer_profile: str) -> Callable[[str],int]:
+def rating_for_customer(customer_profile: str) -> Callable[[str], int]:
     """
     Args:
         customer_profile: the preferences of the customer
@@ -21,15 +20,30 @@ def rating_for_customer(customer_profile: str) -> Callable[[str],int]:
     pass
 
 
-rating_func = rating_for_customer("asian lady who cares about quality but cost is of greater concern")
-rt = rating_func("A wonderful blender that is only $19, on sale from $100") # return 8
+# rating_func = rating_for_customer(
+#     "asian lady who cares about quality but cost is of greater concern"
+# )
+# rt = rating_func("A wonderful blender that is only $19, on sale from $100")  # return 8
 
 
-# class Location(pydantic.BaseModel):
-#     city: str = Field(description="City of life ")
-#     state: str = Field(description="State of affairs")
-#
-# Location(city="London", state="CA")
+class Location(BaseModel):
+    city: str = Field(description="City of life ")
+    state: str = Field(description="State of affairs")
+
+
+@marvin.fn
+def where_is(attraction: str, weather: Callable[[str], str]) -> Location:
+    """
+    Args:
+        attraction: the name of the attraction in some place
+        weather: a function to get the weather at a particular location
+    Returns:
+        The location of that place
+    """
+    pass
+
+
+a = where_is("The Golden Gate Bridge", lambda x: "good")
 #
 # class CallableWithMetaData(pydantic.BaseModel):
 #     name: str
@@ -41,20 +55,9 @@ rt = rating_func("A wonderful blender that is only $19, on sale from $100") # re
 #         arbitrary_types_allowed = True
 #
 # CallableWithMetaData(name="name", signature=inspect.signature(rating_for_customer),docstring="asdskd",func=None)
-#
-# @marvin.fn
-# def where_is(attraction: str) -> Location:
-#     """
-#     Args:
-#         attraction: the name of the attraction in some place
-#     Returns:
-#         The location of that place
-#     """
-#     pass
+# #
+##
 #
 #
-# a = where_is("The Golden Gate Bridge")
 # #
 # # print(a)
-
-

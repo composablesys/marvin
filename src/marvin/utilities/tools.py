@@ -74,8 +74,8 @@ def tool_from_type(type_: U, tool_name: str = None) -> FunctionTool[U]:
         metadata = FieldInfo(description="The formatted response")
 
     model = create_model(
-        tool_name or "FormatResponse",
-        __doc__="Format the response with valid JSON.",
+        tool_name or "FormatFinalResponse",
+        __doc__="Format the final response with valid JSON.",
         __module__=__name__,
         **{"value": (type_, metadata)},
     )
@@ -127,15 +127,16 @@ def tool_from_function(
         fn = custom_partial(fn, **kwargs)
 
     schema = pydantic.TypeAdapter(
-        fn, config=pydantic.ConfigDict(arbitrary_types_allowed=True)
-    ).json_schema()
+        fn, config=pydantic.ConfigDict(arbitrary_types_allowed=True))
+
+    json_schema = schema.json_schema()
 
     return FunctionTool[T](
         type="function",
         function=Function[T].create(
             name=name or fn.__name__,
             description=description or fn.__doc__,
-            parameters=schema,
+            parameters=json_schema,
             _python_fn=fn,
         ),
     )

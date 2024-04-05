@@ -35,7 +35,6 @@ class MarvinType(BaseModel):
     model_config = dict(extra="forbid")
 
 
-
 class Function(MarvinType, Generic[T]):
     name: str
     description: Optional[str]
@@ -114,6 +113,13 @@ class BaseMessage(MarvinType):
     role: str
 
 
+class ToolMessage(BaseMessage):
+    """Schema for Messages pertaining to the result of calling a tool"""
+
+    role: Literal["tool"] = "tool"
+    tool_call_id: str
+
+
 class Grammar(MarvinType):
     logit_bias: Optional[LogitBias] = None
     max_tokens: Optional[Annotated[int, Field(strict=True, ge=1)]] = None
@@ -182,9 +188,9 @@ class TranscriptRequest(MarvinType):
             " supplying spelling of complex words, including filler vocalizations, etc."
         ),
     )
-    response_format: Optional[
-        Literal["json", "text", "srt", "verbose_json", "vtt"]
-    ] = None
+    response_format: Optional[Literal["json", "text", "srt", "verbose_json", "vtt"]] = (
+        None
+    )
     language: Optional[str] = None
     temperature: Optional[float] = None
 

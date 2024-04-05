@@ -3,6 +3,7 @@ Core LLM tools for working with text and structured data.
 """
 
 import inspect
+import types
 from collections import deque
 from enum import Enum
 from functools import partial, wraps
@@ -10,13 +11,15 @@ from typing import (
     Any,
     Callable,
     GenericAlias,
+    List,
     Literal,
     Optional,
     Type,
     TypeVar,
     Union,
+    get_args,
     get_origin,
-    get_args
+    Tuple,
 )
 
 import pydantic
@@ -38,14 +41,22 @@ from marvin.ai.prompts.text_prompts import (
     GENERATE_PROMPT,
 )
 from marvin.client.openai import AsyncMarvinClient, ChatCompletion, MarvinClient
-from marvin.types import ChatRequest, ChatResponse
+from marvin.types import (
+    ChatRequest,
+    ChatResponse,
+    FunctionTool,
+    BaseMessage as Message,
+    ToolMessage,
+)
 from marvin.utilities.asyncio import run_sync
 from marvin.utilities.context import ctx
 from marvin.utilities.jinja import Transcript
 from marvin.utilities.logging import get_logger
 from marvin.utilities.mapping import map_async
-from marvin.utilities.python import PythonFunction, CallableWithMetaData
+from marvin.utilities.python import CallableWithMetaData, PythonFunction
 from marvin.utilities.strings import count_tokens
+
+import docstring_parser
 
 T = TypeVar("T")
 M = TypeVar("M", bound=BaseModel)
@@ -66,6 +77,7 @@ async def generate_llm_response(
     prompt_kwargs: Optional[dict] = None,
     model_kwargs: Optional[dict] = None,
     client: Optional[AsyncMarvinClient] = None,
+    extra_messages: Optional[List[Message]] = None,
 ) -> ChatResponse:
     """
     Generates a language model response based on a provided prompt template.
@@ -84,8 +96,12 @@ async def generate_llm_response(
     client = client or AsyncMarvinClient()
     model_kwargs = model_kwargs or {}
     prompt_kwargs = prompt_kwargs or {}
-    messages = Transcript(content=prompt_template).render_to_messages(**prompt_kwargs)
+    extra_messages = extra_messages or []
 
+    messages = (
+        Transcript(content=prompt_template).render_to_messages(**prompt_kwargs)
+        + extra_messages
+    )
     request = ChatRequest(messages=messages, **model_kwargs)
     if ctx.get("eject_request"):
         raise EjectRequest(request)
@@ -98,7 +114,9 @@ async def generate_llm_response(
     return ChatResponse(request=request, response=response, tool_outputs=tool_outputs)
 
 
-def _get_tool_outputs(request: ChatRequest, response: ChatCompletion) -> list[Any]:
+def _get_tool_outputs(
+    request: ChatRequest, response: ChatCompletion
+) -> List[Tuple[str, str, any]]:
     outputs = []
     tool_calls = response.choices[0].message.tool_calls or []
     for tool_call in tool_calls:
@@ -107,7 +125,7 @@ def _get_tool_outputs(request: ChatRequest, response: ChatCompletion) -> list[An
             function_name=tool_call.function.name,
             function_arguments_json=tool_call.function.arguments,
         )
-        outputs.append(tool_output)
+        outputs.append((tool_call.function.name, tool_call.id, tool_output))
     return outputs
 
 
@@ -118,6 +136,8 @@ async def _generate_typed_llm_response_with_tool(
     prompt_kwargs: Optional[dict] = None,
     model_kwargs: Optional[dict] = None,
     client: Optional[AsyncMarvinClient] = None,
+    max_tool_usage_times: int = 1,
+    existing_tools: List[FunctionTool] = None,
 ) -> T:
     """
     Generates a language model response based on a provided prompt template and a specific tool.
@@ -142,27 +162,60 @@ async def _generate_typed_llm_response_with_tool(
     Returns:
         T: The generated response from the language model.
     """
+    existing_tools = existing_tools or []
     model_kwargs = model_kwargs or {}
     prompt_kwargs = prompt_kwargs or {}
-    tool = marvin.utilities.tools.tool_from_type(type_, tool_name=tool_name)
-    tool_choice = tool_choice = {
-        "type": "function",
-        "function": {"name": tool.function.name},
-    }
-    model_kwargs.update(tools=[tool], tool_choice=tool_choice)
+    return_tool = marvin.utilities.tools.tool_from_type(type_, tool_name=tool_name)
+    model_didnt_call_function = False
+    tool_messages = []
+    while max_tool_usage_times > 0:
+        # The tool is the way to supply the response. If we are at our last generation we want to force the model's
+        # hand in generating and calling the response function  alternatively, if the model didn't call any tool but
+        # just generated a bunch of messages, then the next iteration we better make sure it calls the right tool
+        tool_choice = (
+            "auto"
+            if max_tool_usage_times > 1 and not model_didnt_call_function
+            else {
+                "type": "function",
+                "function": {"name": return_tool.function.name},
+            }
+        )
+        model_kwargs.update(
+            tools=[return_tool] + existing_tools, tool_choice=tool_choice
+        )
 
-    # adding the tool parameters to the context helps GPT-4 pay attention to field
-    # descriptions. If they are only in the tool signature it often ignores them.
-    prompt_kwargs["response_format"] = tool.function.parameters
+        # adding the tool parameters to the context helps GPT-4 pay attention to field
+        # descriptions. If they are only in the tool signature it often ignores them.
+        prompt_kwargs["response_format"] = return_tool.function.parameters
 
-    response = await generate_llm_response(
-        prompt_template=prompt_template,
-        prompt_kwargs=prompt_kwargs,
-        model_kwargs=model_kwargs,
-        client=client,
-    )
+        response = await generate_llm_response(
+            prompt_template=prompt_template,
+            prompt_kwargs=prompt_kwargs,
+            model_kwargs=model_kwargs,
+            client=client,
+            extra_messages=tool_messages,
+        )
 
-    return response.tool_outputs[0]
+        tool_outputs = response.tool_outputs
+        if len(tool_outputs) == 0:
+            model_didnt_call_function = True
+
+        return_res = [
+            output
+            for name, _, output in tool_outputs
+            if name == return_tool.function.name
+        ]
+        if return_res:
+            return return_res[0]
+
+        tool_messages.extend(
+            map(
+                lambda tool_output: ToolMessage(
+                    content=tool_output[1], tool_call_id=tool_output[2]
+                ),
+                tool_outputs,
+            )
+        )
 
 
 async def _generate_typed_llm_response_with_logit_bias(
@@ -488,7 +541,6 @@ def fn(
         prompt_template = FUNCTION_PROMPT_FIRST_ORDER
         extra_prompt_kwargs = {}
 
-
         # written instructions or missing annotations are treated as "-> str"
         if (
             isinstance(model.return_annotation, str)
@@ -505,27 +557,71 @@ def fn(
             )
             post_processor = lambda result: result.value  # noqa E731
 
-        elif isinstance(model.return_annotation, Callable):
-            type_ = pydantic.create_model("PromptAndName",
-                                          prompt=(str, pydantic.Field(description="Prompt Generated")),
-                                          function_name=(str, pydantic.Field(description="Name of the function that "
-                                                                                         "best reflect this prompt")))
+        # create a callable
+        elif isinstance(model.return_annotation, Callable) and not isinstance(
+            model.return_annotation, type
+        ):
+            type_ = pydantic.create_model(
+                "PromptAndName",
+                prompt=(str, pydantic.Field(description="Prompt Generated")),
+                function_name=(
+                    str,
+                    pydantic.Field(
+                        description="Name of the function that "
+                        "best reflect this prompt"
+                    ),
+                ),
+            )
             args = get_args(model.return_annotation)
             prompt_template = FUNCTION_PROMPT_HIGHER_ORDER
             match args:
                 case []:
                     signature = inspect.Signature([], return_annotation=None)
                 case [param_annotations, return_annotations]:
-                    params = [inspect.Parameter(f"{t.__name__.strip()}{i}", inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                                                annotation=t) for i, t in enumerate(param_annotations)]
-                    signature = inspect.Signature(params, return_annotation=return_annotations)
+                    params = [
+                        inspect.Parameter(
+                            f"{t.__name__.strip()}{i}",
+                            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                            annotation=t,
+                        )
+                        for i, t in enumerate(param_annotations)
+                    ]
+                    signature = inspect.Signature(
+                        params, return_annotation=return_annotations
+                    )
             # noinspection PyUnboundLocalVariable
             extra_prompt_kwargs["return_annotation"] = f"{signature}"
-            post_processor = lambda result: fn(CallableWithMetaData(name=result.function_name, # noqa E731
-                                                                    signature=signature,
-                                                                    docstring=result.prompt), model_kwargs, client)
+            post_processor = lambda result: fn(  # noqa E731
+                CallableWithMetaData(
+                    name=result.function_name,
+                    signature=signature,
+                    docstring=result.prompt,
+                ),
+                model_kwargs,
+                client,
+            )
         else:
             type_ = model.return_annotation
+
+        func_args = filter(
+            lambda param_pair: isinstance(param_pair[1], types.FunctionType),
+            model.bound_parameters.items(),
+        )
+        parsed_doc = docstring_parser.parse(model.docstring)
+        def create_tool(arg_func_pair: Tuple[str, Callable]):
+            name, f = arg_func_pair
+            param_docs = [
+                param for param in parsed_doc.params if param.arg_name == name
+            ]
+            param_doc = param_docs[0] if param_docs else None
+            # param.annotation =
+
+            def X(a : int) -> str:
+                return str(a)
+
+            marvin.utilities.tools.tool_from_function(model.signature.parameters["weather"].annotation, param_doc)
+
+        tools = list(map(create_tool, func_args))
 
         result = await _generate_typed_llm_response_with_tool(
             prompt_template=prompt_template,
@@ -533,7 +629,7 @@ def fn(
                 fn_definition=model.definition,
                 bound_parameters=model.bound_parameters,
                 return_value=model.return_value,
-                **extra_prompt_kwargs
+                **extra_prompt_kwargs,
             ),
             type_=type_,
             model_kwargs=model_kwargs,
@@ -547,6 +643,7 @@ def fn(
     if inspect.iscoroutinefunction(func):
         return async_wrapper
     else:
+
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
             return run_sync(async_wrapper(*args, **kwargs))

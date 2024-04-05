@@ -180,17 +180,28 @@ FUNCTION_PROMPT_FIRST_ORDER = inspect.cleandoc(
     
     e.g. `list_fruits(n: int) -> list[str]` (3) -> "apple", "banana", "cherry"
     
-    HUMAN: 
+    {% if with_tool is defined and with_tool %} 
+    The arguments that are functions are available for you to call through the tools and 
+    functions. Feel free to call them when appropriate.  
+    {% endif %}
+    
+    HUMAN:
     
     ## Function inputs
     
     {% if bound_parameters -%}
     The function was called with the following inputs:
     {%for (arg, value) in bound_parameters.items()%}
+    {% if not value is is_func_type %}
     - {{ arg }}: {{ value }}
+    {% endif %}
     {% endfor %}
     {% else %}
     The function was not called with any inputs.
+    {% endif %}
+    
+    {% if with_tool is defined and with_tool %} 
+    A reminder that the function arguments are available as tools.
     {% endif %}
     
     {% if return_value -%}
@@ -214,12 +225,18 @@ FUNCTION_PROMPT_HIGHER_ORDER = inspect.cleandoc(
     appropriately.
 
     {{ fn_definition }}
-
+    
+    {% if with_tool is defined and with_tool %} 
+    The arguments that are functions are available for you to call through the tools and 
+    functions. Feel free to call them when appropriate.  
+    {% endif %}
+    
     Essentially you are expected to provide a prompt that is **specialized** to the inputs that the user will give you. 
     
     You need to reply with a prompt that describes a function in natural language with the following signature:
     
     {{ return_annotation }}
+    
     
     HUMAN: 
 
@@ -228,10 +245,14 @@ FUNCTION_PROMPT_HIGHER_ORDER = inspect.cleandoc(
     {% if bound_parameters -%}
     The function was called with the following inputs:
     {%for (arg, value) in bound_parameters.items()%}
-    - {{ arg }}: {{ value }}
+    - {{ arg }}:  {{ value if not value is is_func_type else "Refer to the tool provided" }}
     {% endfor %}
     {% else %}
     The function was not called with any inputs.
+    {% endif %}
+
+    {% if with_tool is defined and with_tool %} 
+    A reminder that the function arguments are available as tools.
     {% endif %}
 
     {% if return_value -%}

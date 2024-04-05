@@ -1,5 +1,16 @@
 # LLM Language Features 
 
+## What I have done so far
+
+- Higher Order Return Types
+
+
+
+
+
+
+
+
 ## Motivations
 Recently, there have been a myriad of libraries that provide utilities for developers to integrate LMs into their programmatic environments. However, there are few experiments emphasizing how LLMs could be _organically_ integrated into a programming language. It's been envisioned by many that the field of software engineering will be revolutionized by integration with LLM and other generative AI technologies. At the macroscopic level, libraries have imposed/provided structures for prompting. However, there are few more microscopic structures that is more seamlessly integrated into programming itself. 
 
