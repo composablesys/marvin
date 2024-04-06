@@ -269,6 +269,7 @@ FUNCTION_PROMPT_HIGHER_ORDER = inspect.cleandoc(
     """
 )
 
+
 IMAGE_PROMPT = inspect.cleandoc(
     """
     {{ instructions }}

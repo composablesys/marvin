@@ -518,7 +518,8 @@ def fn(
     func: Optional[Callable] = None,
     model_kwargs: Optional[dict] = None,
     client: Optional[MarvinClient] = None,
-    max_tool_usage_times: int = 1,
+    extra_render_parameters: Optional[dict] = None,
+    max_tool_usage_times: int = 0,
 ) -> Callable:
     """
     Converts a Python function into an AI function using a decorator.
@@ -552,7 +553,9 @@ def fn(
 
     @wraps(func)
     async def async_wrapper(*args, **kwargs):
-        model = PythonFunction.from_function_call(func, *args, **kwargs)
+        model = PythonFunction.from_function_call(
+            func, extra_render_parameters, *args, **kwargs
+        )
         post_processor = marvin.settings.post_processor_fn
         prompt_template = FUNCTION_PROMPT_FIRST_ORDER
         extra_prompt_kwargs = {}
@@ -667,6 +670,32 @@ def fn(
             return run_sync(async_wrapper(*args, **kwargs))
 
         return sync_wrapper
+
+
+def predicate(
+    natural_lang_constraint="anything",
+    model_kwargs: Optional[dict] = None,
+    client: Optional[MarvinClient] = None,
+):
+    def predicate(data) -> bool:
+        """
+        Check whether the data provided satisfies this constraint:
+
+        {{ constraint }}
+
+        Args:
+            data: the data to validate
+
+        Returns:
+            a bool that represents if the data satisfies the constraint given
+        """
+
+    return fn(
+        predicate,
+        model_kwargs=model_kwargs,
+        client=client,
+        extra_render_parameters={"constraint": natural_lang_constraint},
+    )
 
 
 class Model(BaseModel):
