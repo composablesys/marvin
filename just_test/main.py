@@ -31,19 +31,28 @@ class Location(BaseModel):
     state: str = Field(description="State of affairs")
 
 
+def weather_at_city(city: str) -> str:
+    if city == "San Francisco":
+        return "Sunny and bright"
+    if city == "Los Angeles":
+        return "Cold and Cloudy"
+
+
 @marvin.fn
-def where_is(attraction: str, weather: Callable[[str], str]) -> Location:
+def pleasantness(attraction: str, weather_func: Callable[[str], str]) -> str:
     """
     Args:
         attraction: the name of the attraction in some place
-        weather: a function to get the weather at a particular location
+        weather_func: a function that get the weather at a particular **city** that the attraction is located.
     Returns:
-        The location of that place
+        How pleasant the attraction will likely be given the weather between 0 and 10
     """
     pass
 
+# the weather in SF is really good rn, LA not so much
+pleasantness("The Golden Gate Bridge", weather_at_city) # return 8
+pleasantness("Hollywood Sign", weather_at_city) # return 2
 
-a = where_is("The Golden Gate Bridge", lambda x: "good")
 #
 # class CallableWithMetaData(pydantic.BaseModel):
 #     name: str

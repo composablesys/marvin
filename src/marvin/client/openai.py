@@ -275,6 +275,7 @@ class AsyncMarvinClient(pydantic.BaseModel):
     async def generate_chat(
         self,
         stream_callback: Optional[Callable[[Message], None]] = None,
+        request: ChatRequest = None,
         **kwargs: Any,
     ) -> Union["ChatCompletion", T]:
         create = self.client.chat.completions.create
@@ -284,10 +285,15 @@ class AsyncMarvinClient(pydantic.BaseModel):
             kwargs.setdefault("stream", True)
 
         # validate request
-        request = ChatRequest(**kwargs)
+        if request is None:
+            request = ChatRequest(**kwargs)
+        else:
+            request = request.copy(update=kwargs)
+
         try:
+            model_request = request.model_dump(exclude_none=True)
             response: "ChatCompletion" = await create(
-                **request.model_dump(exclude_none=True)
+                **model_request
             )
         except NotFoundError as e:
             if await should_fallback(e, request):

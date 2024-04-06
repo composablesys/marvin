@@ -127,7 +127,8 @@ def tool_from_function(
         fn = custom_partial(fn, **kwargs)
 
     schema = pydantic.TypeAdapter(
-        fn, config=pydantic.ConfigDict(arbitrary_types_allowed=True))
+        fn, config=pydantic.ConfigDict(arbitrary_types_allowed=True)
+    )
 
     json_schema = schema.json_schema()
 

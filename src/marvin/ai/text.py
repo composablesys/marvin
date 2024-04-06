@@ -8,7 +8,6 @@ from collections import deque
 from enum import Enum
 from functools import partial, wraps
 from typing import (
-    Any,
     Callable,
     GenericAlias,
     List,
@@ -24,6 +23,7 @@ from typing import (
 
 import pydantic
 from cachetools import LRUCache
+from openai.types.chat import ChatCompletionMessage
 from pydantic import BaseModel
 
 import marvin
@@ -47,6 +47,7 @@ from marvin.types import (
     FunctionTool,
     BaseMessage as Message,
     ToolMessage,
+    ToolOutput, ChatCompletionMessage,
 )
 from marvin.utilities.asyncio import run_sync
 from marvin.utilities.context import ctx
@@ -107,7 +108,7 @@ async def generate_llm_response(
         raise EjectRequest(request)
     if marvin.settings.log_verbose:
         logger.debug_kv("Request", request.model_dump_json(indent=2))
-    response = await client.generate_chat(**request.model_dump())
+    response = await client.generate_chat(request=request)
     if marvin.settings.log_verbose:
         logger.debug_kv("Response", response.model_dump_json(indent=2))
     tool_outputs = _get_tool_outputs(request, response)
@@ -116,7 +117,7 @@ async def generate_llm_response(
 
 def _get_tool_outputs(
     request: ChatRequest, response: ChatCompletion
-) -> List[Tuple[str, str, any]]:
+) -> List[ToolOutput]:
     outputs = []
     tool_calls = response.choices[0].message.tool_calls or []
     for tool_call in tool_calls:
@@ -125,7 +126,13 @@ def _get_tool_outputs(
             function_name=tool_call.function.name,
             function_arguments_json=tool_call.function.arguments,
         )
-        outputs.append((tool_call.function.name, tool_call.id, tool_output))
+        outputs.append(
+            ToolOutput(
+                tool_name=tool_call.function.name,
+                tool_id=tool_call.id,
+                output=tool_output,
+            )
+        )
     return outputs
 
 
@@ -167,7 +174,7 @@ async def _generate_typed_llm_response_with_tool(
     prompt_kwargs = prompt_kwargs or {}
     return_tool = marvin.utilities.tools.tool_from_type(type_, tool_name=tool_name)
     model_didnt_call_function = False
-    tool_messages = []
+    new_messages = []
     while max_tool_usage_times > 0:
         # The tool is the way to supply the response. If we are at our last generation we want to force the model's
         # hand in generating and calling the response function  alternatively, if the model didn't call any tool but
@@ -193,29 +200,30 @@ async def _generate_typed_llm_response_with_tool(
             prompt_kwargs=prompt_kwargs,
             model_kwargs=model_kwargs,
             client=client,
-            extra_messages=tool_messages,
+            extra_messages=new_messages,
         )
-
+        new_messages.append(ChatCompletionMessage(**(response.response.choices[0].message.model_dump(exclude_none=True))))
         tool_outputs = response.tool_outputs
         if len(tool_outputs) == 0:
             model_didnt_call_function = True
 
         return_res = [
-            output
-            for name, _, output in tool_outputs
-            if name == return_tool.function.name
+            tool_output.output
+            for tool_output in tool_outputs
+            if tool_output.tool_name == return_tool.function.name
         ]
         if return_res:
             return return_res[0]
 
-        tool_messages.extend(
+        new_messages.extend(
             map(
                 lambda tool_output: ToolMessage(
-                    content=tool_output[1], tool_call_id=tool_output[2]
+                    content=tool_output.output, tool_call_id=tool_output.tool_id
                 ),
                 tool_outputs,
             )
         )
+        max_tool_usage_times -= 1
 
 
 async def _generate_typed_llm_response_with_logit_bias(
@@ -505,6 +513,7 @@ def fn(
     func: Optional[Callable] = None,
     model_kwargs: Optional[dict] = None,
     client: Optional[MarvinClient] = None,
+    max_tool_usage_times: int = 1,
 ) -> Callable:
     """
     Converts a Python function into an AI function using a decorator.
@@ -517,6 +526,8 @@ def fn(
         model_kwargs (dict, optional): Additional keyword arguments for the
             language model. Defaults to None.
         client (MarvinClient, optional): The client to use for the AI function.
+        max_tool_usage_times: The maximum number of times a tool that is passed
+            in as an argument to the function could be used.
 
     Returns:
         Callable: The converted AI function.
@@ -608,24 +619,24 @@ def fn(
             model.bound_parameters.items(),
         )
         parsed_doc = docstring_parser.parse(model.docstring)
+
         def create_tool(arg_func_pair: Tuple[str, Callable]):
             name, f = arg_func_pair
             param_docs = [
                 param for param in parsed_doc.params if param.arg_name == name
             ]
-            param_doc = param_docs[0] if param_docs else None
-            # param.annotation =
+            param_doc = param_docs[0].description if param_docs else None
 
-            def X(a : int) -> str:
-                return str(a)
-
-            marvin.utilities.tools.tool_from_function(model.signature.parameters["weather"].annotation, param_doc)
+            return marvin.utilities.tools.tool_from_function(
+                fn=f, name=name, description=param_doc
+            )
 
         tools = list(map(create_tool, func_args))
 
         result = await _generate_typed_llm_response_with_tool(
             prompt_template=prompt_template,
             prompt_kwargs=dict(
+                with_tool=len(tools) > 0,
                 fn_definition=model.definition,
                 bound_parameters=model.bound_parameters,
                 return_value=model.return_value,
@@ -634,6 +645,8 @@ def fn(
             type_=type_,
             model_kwargs=model_kwargs,
             client=client,
+            existing_tools=tools,
+            max_tool_usage_times=max_tool_usage_times + 1,
         )
 
         if post_processor is not None:
