@@ -4,7 +4,10 @@ from pathlib import Path
 from typing import Any, Callable, Generic, Literal, Optional, TypeVar, Union
 
 import openai.types.chat
-from openai.types.chat import ChatCompletion, ChatCompletionMessageToolCallParam, ChatCompletionMessageToolCall
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionMessageToolCall,
+)
 from pydantic import BaseModel, Field, PrivateAttr, computed_field, SerializeAsAny
 from typing_extensions import Annotated, Self
 

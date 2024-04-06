@@ -47,7 +47,8 @@ from marvin.types import (
     FunctionTool,
     BaseMessage as Message,
     ToolMessage,
-    ToolOutput, ChatCompletionMessage,
+    ToolOutput,
+    ChatCompletionMessage,
 )
 from marvin.utilities.asyncio import run_sync
 from marvin.utilities.context import ctx
@@ -202,7 +203,11 @@ async def _generate_typed_llm_response_with_tool(
             client=client,
             extra_messages=new_messages,
         )
-        new_messages.append(ChatCompletionMessage(**(response.response.choices[0].message.model_dump(exclude_none=True))))
+        new_messages.append(
+            ChatCompletionMessage(
+                **(response.response.choices[0].message.model_dump(exclude_none=True))
+            )
+        )
         tool_outputs = response.tool_outputs
         if len(tool_outputs) == 0:
             model_didnt_call_function = True

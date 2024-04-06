@@ -49,9 +49,10 @@ def pleasantness(attraction: str, weather_func: Callable[[str], str]) -> str:
     """
     pass
 
+
 # the weather in SF is really good rn, LA not so much
-pleasantness("The Golden Gate Bridge", weather_at_city) # return 8
-pleasantness("Hollywood Sign", weather_at_city) # return 2
+pleasantness("The Golden Gate Bridge", weather_at_city)  # return 8
+pleasantness("Hollywood Sign", weather_at_city)  # return 2
 
 #
 # class CallableWithMetaData(pydantic.BaseModel):

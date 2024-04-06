@@ -292,9 +292,7 @@ class AsyncMarvinClient(pydantic.BaseModel):
 
         try:
             model_request = request.model_dump(exclude_none=True)
-            response: "ChatCompletion" = await create(
-                **model_request
-            )
+            response: "ChatCompletion" = await create(**model_request)
         except NotFoundError as e:
             if await should_fallback(e, request):
                 response = await create(
