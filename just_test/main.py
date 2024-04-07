@@ -14,7 +14,8 @@ from pydantic import BaseModel, Field, type_adapter
 import marvin
 from marvin.settings import temporary_settings
 
-def contract(func: Callable) -> Callable:
+
+def contract(func: Callable, pre=None) -> Callable:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         hints = get_type_hints(func, include_extras=True)
         signature = inspect.signature(func)
@@ -66,30 +67,44 @@ def reply_comment(
         Predicate(
             marvin.val_contract("must not contain words inappropriate for children")
         ),
-    ]
+    ],
 ) -> str:
     # ....
     return processed_comment
 
-# with temporary_settings(ai__text__disable_contract=False):
+
+with temporary_settings(ai__text__disable_contract=False):
+    print(marvin.val_contract("must add up to 2")(1, 1))
+    print(marvin.val_contract("must add up to 2")(1, 2))
 #     print(reply_comment("fuck this shit", 12312e-1))
 
-@marvin.fn
-def func(*data) -> bool:
-    """
-    Check whether the data provided satisfies this constraint:
 
-    The numbers must add up to 2
-
-    Args:
-        *data: data that you need to validate against the constraint
-
-    Returns:
-        a bool that represents if the data satisfies the constraint given
-    """
+@contract(
+    pre=lambda comment, reply: marvin.val_contract(
+        "the comment and reply must be related and not off topic"
+    )(comment, reply)
+)
+def process_comment(comment: str, reply: str) -> str:
     pass
 
-func(1,2)
+
+# @marvin.fn
+# def func(*data) -> bool:
+#     """
+#     Check whether the data provided satisfies this constraint:
+#
+#     The numbers must add up to 2
+#
+#     Args:
+#         *data: data that you need to validate against the constraint
+#
+#     Returns:
+#         a bool that represents if the data satisfies the constraint given
+#     """
+#     pass
+#
+#
+# print(func(1, 1))
 
 # @marvin.fn
 # def rating_for_customer(customer_profile: str) -> Callable[[str], int]:
