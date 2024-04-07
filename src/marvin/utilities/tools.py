@@ -128,16 +128,14 @@ def tool_from_function(
 
     schema = pydantic.TypeAdapter(
         fn, config=pydantic.ConfigDict(arbitrary_types_allowed=True)
-    )
-
-    json_schema = schema.json_schema()
+    ).json_schema()
 
     return FunctionTool[T](
         type="function",
         function=Function[T].create(
             name=name or fn.__name__,
             description=description or fn.__doc__,
-            parameters=json_schema,
+            parameters=schema,
             _python_fn=fn,
         ),
     )
