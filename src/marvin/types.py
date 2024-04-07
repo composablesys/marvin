@@ -147,7 +147,7 @@ class Prompt(Grammar, ToolSet[T], Generic[T]):
 
 class ResponseModel(MarvinType):
     model: type
-    name: str = Field(default="FormatResponse")
+    name: str = Field(default="FormatFinalResponse")
     description: str = Field(default="Response format")
 
 

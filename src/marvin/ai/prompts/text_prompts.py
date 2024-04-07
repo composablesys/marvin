@@ -25,7 +25,7 @@ CAST_PROMPT = inspect.cleandoc(
     
     ## Response format
     
-    Call the `FormatResponse` tool to validate your response, and use the
+    Call the `FormatFinalResponse` tool to validate your response, and use the
     following schema: {{ response_format }}
     
     - When providing integers, do not write out any decimals at all
@@ -64,7 +64,7 @@ EXTRACT_PROMPT = inspect.cleandoc(
     
     ## Response format
     
-    Call the `FormatResponse` tool to validate your response, and use the
+    Call the `FormatFinalResponse` tool to validate your response, and use the
     following schema: {{ response_format }}
     
     - When providing integers, do not write out any decimals at all
@@ -113,7 +113,7 @@ GENERATE_PROMPT = inspect.cleandoc(
     
     ## Response format
     
-    Call the `FormatResponse` tool to validate your response, and use the
+    Call the `FormatFinalResponse` tool to validate your response, and use the
     following schema: {{ response_format }}
     
     {% if previous_responses -%}
