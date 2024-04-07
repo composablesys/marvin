@@ -677,14 +677,15 @@ def predicate(
     model_kwargs: Optional[dict] = None,
     client: Optional[MarvinClient] = None,
 ):
-    def predicate_func(*data) -> bool:
+    def predicate_func(*args, **kwargs) -> bool:
         """
         Check whether the data provided satisfies this constraint:
 
         {{ constraint }}
 
         Args:
-            *data: data that you need to validate against the constraint
+            *args: args that you need to validate against the constraint
+            **kwargs: kwargs that you need to validate against the constraint
 
         Returns:
             a bool that represents if the data satisfies the constraint given

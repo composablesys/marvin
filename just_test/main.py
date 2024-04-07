@@ -1,5 +1,7 @@
+import functools
 from typing import Callable, Any
 
+import pydantic
 from annotated_types import Predicate
 from dotenv import load_dotenv
 
@@ -15,8 +17,13 @@ import marvin
 from marvin.settings import temporary_settings
 
 
-def contract(func: Callable, pre=None) -> Callable:
+def contract(func: Callable, pre: Callable = None, post: Callable = None) -> Callable:
+    pre = lambda *args, **kwargs: True if pre is None else pre  # noqa E731
+    post = lambda *args, **kwargs: True if post is None else post  # noqa E731
+
+    @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+
         hints = get_type_hints(func, include_extras=True)
         signature = inspect.signature(func)
 
@@ -52,9 +59,19 @@ def contract(func: Callable, pre=None) -> Callable:
                     new_args.append(value)
                 else:
                     new_kwargs[name] = value
+        if not pre(*new_args,**new_kwargs):
+            raise pydantic.ValidationError("Failed Pre condition of contract")
 
-            # Call the original function with coerced values
+        # Call the original function with coerced values
         result = func(*new_args, **new_kwargs)
+
+        if 'return' in hints and hints['return'] is not None:
+            return_adapter = type_adapter.TypeAdapter(hints['return'])
+            result = return_adapter.validate_python(result)
+
+        new_args = [result] + new_args
+        if not post(*new_args, **new_kwargs):
+            raise pydantic.ValidationError("Failed post condition of contract")
         return result
 
     return wrapper
@@ -68,21 +85,23 @@ def reply_comment(
             marvin.val_contract("must not contain words inappropriate for children")
         ),
     ],
+    **kwargs: dict
 ) -> str:
     # ....
     return processed_comment
 
 
 with temporary_settings(ai__text__disable_contract=False):
-    print(marvin.val_contract("must add up to 2")(1, 1))
-    print(marvin.val_contract("must add up to 2")(1, 2))
-#     print(reply_comment("fuck this shit", 12312e-1))
+    # print(marvin.val_contract("must add up to 2")(1, 1))
+    # print(marvin.val_contract("must add up to 2")(1, 2))
+    print(reply_comment("fuck this shit"))
 
 
 @contract(
     pre=lambda comment, reply: marvin.val_contract(
         "the comment and reply must be related and not off topic"
-    )(comment, reply)
+    )(comment=comment, reply=reply),
+    post=lambda result, comment, reply: True,
 )
 def process_comment(comment: str, reply: str) -> str:
     pass
