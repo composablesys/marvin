@@ -677,6 +677,12 @@ def predicate(
     model_kwargs: Optional[dict] = None,
     client: Optional[MarvinClient] = None,
 ):
+    # CallableWithMetaData(
+    #     name=predica,
+    #     signature=signature,
+    #     docstring=result.prompt,
+    # ),
+
     def predicate(data) -> bool:
         """
         Check whether the data provided satisfies this constraint:
@@ -697,6 +703,18 @@ def predicate(
         extra_render_parameters={"constraint": natural_lang_constraint},
     )
 
+
+def val_contract(
+    natural_lang_constraint="anything",
+    model_kwargs: Optional[dict] = None,
+    client: Optional[MarvinClient] = None,
+):
+    def wrapper(*args, **kwargs):
+        if marvin.settings.ai.text.disable_contract:
+            return True
+        else:
+            return predicate(natural_lang_constraint, model_kwargs, client)(*args, **kwargs)
+    return wrapper
 
 class Model(BaseModel):
     """

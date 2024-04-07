@@ -2,6 +2,7 @@ from .settings import settings
 
 from .ai.text import (
     predicate,
+    val_contract,
     fn,
     cast,
     cast_async,
@@ -39,6 +40,7 @@ __all__ = [
     "extract_async",
     "fn",
     "predicate",
+    "val_contract",
     "generate",
     "generate_async",
     "model",
