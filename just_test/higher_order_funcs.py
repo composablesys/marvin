@@ -39,6 +39,7 @@ class Location(BaseModel):
     city: str = Field(description="City of life ")
     state: str = Field(description="State of affairs")
 
+
 def weather_at_city(city: str) -> str:
     if city == "San Francisco":
         return "Sunny and bright"
@@ -61,4 +62,3 @@ def pleasantness(attraction: str, weather_func: Callable[[str], str]) -> str:
 # the weather in SF is really good rn, LA not so much
 pleasantness("The Golden Gate Bridge", weather_at_city)  # return 8
 pleasantness("Hollywood Sign", weather_at_city)  # return 2
-

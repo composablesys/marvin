@@ -16,4 +16,3 @@ import marvin
 from marvin.settings import temporary_settings
 
 load_dotenv()
-

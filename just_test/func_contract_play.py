@@ -17,13 +17,13 @@ from marvin.settings import temporary_settings
 
 load_dotenv()
 
+
 def contract(func: Callable, pre: Callable = None, post: Callable = None) -> Callable:
     pre = lambda *args, **kwargs: True if pre is None else pre  # noqa E731
     post = lambda *args, **kwargs: True if post is None else post  # noqa E731
 
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-
         hints = get_type_hints(func, include_extras=True)
         signature = inspect.signature(func)
 
@@ -59,14 +59,14 @@ def contract(func: Callable, pre: Callable = None, post: Callable = None) -> Cal
                     new_args.append(value)
                 else:
                     new_kwargs[name] = value
-        if not pre(*new_args,**new_kwargs):
+        if not pre(*new_args, **new_kwargs):
             raise pydantic.ValidationError("Failed Pre condition of contract")
 
         # Call the original function with coerced values
         result = func(*new_args, **new_kwargs)
 
-        if 'return' in hints and hints['return'] is not None:
-            return_adapter = type_adapter.TypeAdapter(hints['return'])
+        if "return" in hints and hints["return"] is not None:
+            return_adapter = type_adapter.TypeAdapter(hints["return"])
             result = return_adapter.validate_python(result)
 
         new_args = [result] + new_args
@@ -85,7 +85,7 @@ def reply_comment(
             marvin.val_contract("must not contain words inappropriate for children")
         ),
     ],
-    **kwargs: dict
+    **kwargs: dict,
 ) -> str:
     # ....
     return processed_comment
