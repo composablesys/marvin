@@ -1,0 +1,6 @@
+- TODO list
+    - Need a way to emit natural language annotations from the contract?
+        - Look into __get_pydantic_core_schema__ for this
+    - validate_call why did I not realize this existed ??
+        - this is basically contract
+

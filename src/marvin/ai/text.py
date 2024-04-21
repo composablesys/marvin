@@ -4,6 +4,7 @@ Core LLM tools for working with text and structured data.
 
 import inspect
 import types
+import typing
 from collections import deque
 from enum import Enum
 from functools import partial, wraps
@@ -39,6 +40,7 @@ from marvin.ai.prompts.text_prompts import (
     FUNCTION_PROMPT_FIRST_ORDER,
     FUNCTION_PROMPT_HIGHER_ORDER,
     GENERATE_PROMPT,
+    MODEL_CONSTRAINT_PROMPT,
 )
 from marvin.client.openai import AsyncMarvinClient, ChatCompletion, MarvinClient
 from marvin.types import (
@@ -577,8 +579,10 @@ def fn(
             post_processor = lambda result: result.value  # noqa E731
 
         # create a callable
-        elif isinstance(model.return_annotation, Callable) and not isinstance(
-            model.return_annotation, type
+        elif (
+            isinstance(model.return_annotation, Callable)
+            and not isinstance(model.return_annotation, type)
+            and not typing.get_origin(model.return_annotation) is typing.Annotated
         ):
             type_ = pydantic.create_model(
                 "PromptAndName",
@@ -670,6 +674,35 @@ def fn(
             return run_sync(async_wrapper(*args, **kwargs))
 
         return sync_wrapper
+
+
+async def validate_natural_lang_constraints_async(
+    data: any,
+    constraints: List[str],
+    model_kwargs: Optional[dict] = None,
+    client: Optional[MarvinClient] = None,
+):
+    result = await _generate_typed_llm_response_with_tool(
+        prompt_template=MODEL_CONSTRAINT_PROMPT,
+        prompt_kwargs=dict(data=data, constraints=constraints),
+        type_=bool,
+        model_kwargs=model_kwargs,
+        client=client,
+    )
+    return result
+
+
+def validate_natural_lang_constraints(
+    data: any,
+    constraints: List[str],
+    model_kwargs: Optional[dict] = None,
+    client: Optional[MarvinClient] = None,
+):
+    run_sync(
+        validate_natural_lang_constraints_async(
+            data, constraints, model_kwargs=model_kwargs, client=client
+        )
+    )
 
 
 def predicate(

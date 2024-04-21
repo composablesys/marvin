@@ -5,17 +5,17 @@ import pydantic
 from annotated_types import Predicate
 from dotenv import load_dotenv
 
+load_dotenv()
+
 from typing import Annotated, get_type_hints, Callable
 
 import marvin
 import inspect
 
-from pydantic import BaseModel, Field, type_adapter
+from pydantic import BaseModel, Field, type_adapter, schema_json_of
 
 import marvin
 from marvin.settings import temporary_settings
-
-load_dotenv()
 
 
 @marvin.fn
@@ -38,6 +38,13 @@ def rating_for_customer(customer_profile: str) -> Callable[[str], int]:
 class Location(BaseModel):
     city: str = Field(description="City of life ")
     state: str = Field(description="State of affairs")
+    comment: Annotated[
+        str,
+        Predicate(
+            marvin.val_contract("must not contain words inappropriate for children")
+        )]
+
+print(Location.model_json_schema())
 
 
 def weather_at_city(city: str) -> str:
@@ -60,5 +67,5 @@ def pleasantness(attraction: str, weather_func: Callable[[str], str]) -> str:
 
 
 # the weather in SF is really good rn, LA not so much
-pleasantness("The Golden Gate Bridge", weather_at_city)  # return 8
-pleasantness("Hollywood Sign", weather_at_city)  # return 2
+# pleasantness("The Golden Gate Bridge", weather_at_city)  # return 8
+# pleasantness("Hollywood Sign", weather_at_city)  # return 2

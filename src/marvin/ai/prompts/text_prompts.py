@@ -269,6 +269,28 @@ FUNCTION_PROMPT_HIGHER_ORDER = inspect.cleandoc(
     """
 )
 
+MODEL_CONSTRAINT_PROMPT = inspect.cleandoc(
+    """
+    SYSTEM: 
+    You are an expert at determining if some data (Likely in JSON)
+    that the user supplies passes a set of constraints that is supplied. 
+    
+
+    HUMAN: 
+
+    ## Data 
+    {{ data }} 
+    
+    ## Constraints 
+    
+    {% for constraint in constraints%}
+    - {{ constraint }} 
+    {% endfor %}
+
+    ASSISTANT: The constraints are
+    """
+)
+
 
 IMAGE_PROMPT = inspect.cleandoc(
     """
