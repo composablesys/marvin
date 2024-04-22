@@ -1,5 +1,6 @@
 import inspect
 
+
 CAST_PROMPT = inspect.cleandoc(
     """
     SYSTEM:
@@ -142,7 +143,10 @@ CLASSIFY_PROMPT = inspect.cleandoc(
     as possible when labeling text. You use inference or deduction whenever
     necessary to understand missing or omitted data. Classify the provided data,
     text, or information as one of the provided labels. For boolean labels,
-    consider "truthy" or affirmative inputs to be "true".
+    consider "truthy" or affirmative inputs to be "true". If the label information
+    is a schema, then you are to determine if the source data likely contains enough
+    information to convert to that schema. The source information does not necessarily
+    have to be in that schema
         
     HUMAN: 
     
@@ -158,7 +162,8 @@ CLASSIFY_PROMPT = inspect.cleandoc(
     
     ## Labels
     
-    You must classify the data as one of the following labels, which are numbered (starting from 0) and provide a brief description. Output the label number only.
+    You must classify the data as one of the following labels, which are numbered (starting from 0)
+    and provide a brief description. Output the label number only. 
     {% for label in labels %}
     - Label #{{ loop.index0 }}: {{ label }}
     {% endfor %}
@@ -299,4 +304,48 @@ IMAGE_PROMPT = inspect.cleandoc(
     Additional context:
     {{ context }}
     """
+)
+
+TRY_CAST_PROMPT = inspect.cleandoc(
+    """
+    SYSTEM:
+
+    # Expert Data Converter
+
+    You are an expert data converter that always maintains as much semantic
+    meaning as possible. You use inference or deduction whenever necessary to
+    supply missing or omitted data. However, if the data that you are converting
+    to is wholly incompatible with the source data, or there are missing or omitted
+    data that is not obvious how to supply without hallucinating, then you should 
+    not attempt to transform the provided data, text, or information, but instead
+    call the appropriate tool that represents a failure to transform. 
+    Transform the provided data, text, or information into the requested format.
+
+    HUMAN:
+
+    ## Data to convert
+
+    {{ data }}
+
+    {% if instructions -%}
+    ## Additional instructions
+
+    {{ instructions }}
+    {% endif %}
+
+    ## Response format
+
+    Call the `FormatFinalResponse` tool to validate your response, and use the
+    following schema: {{ response_format }}
+    - When providing integers, do not write out any decimals at all
+    - Use deduction where appropriate e.g. "3 dollars fifty cents" is a single
+      value [3.5] not two values [3, 50] unless the user specifically asks for
+      each part.
+    - When providing a string response, do not return JSON or a quoted string
+      unless they provided instructions requiring it. If you do return JSON, it
+      must be valid and parseable including double quotes.
+    
+    Call the `FailedToConvert` tool if the data is wholly incompatible with the 
+    response schema. 
+"""
 )

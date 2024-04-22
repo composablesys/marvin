@@ -18,9 +18,6 @@ from marvin.settings import temporary_settings
 load_dotenv()
 
 
-
-
-
 def contract(func: Callable, pre: Callable = None, post: Callable = None) -> Callable:
     pre = lambda *args, **kwargs: True if pre is None else pre  # noqa E731
     post = lambda *args, **kwargs: True if post is None else post  # noqa E731
@@ -88,10 +85,8 @@ def reply_comment(
             marvin.val_contract("must not contain words inappropriate for children")
         ),
     ],
-    **kwargs: dict,
-) -> str:
-    # ....
-    return processed_comment
+) -> None:
+    server.post(processed_comment)
 
 
 with temporary_settings(ai__text__disable_contract=False):
@@ -107,4 +102,34 @@ with temporary_settings(ai__text__disable_contract=False):
     post=lambda result, comment, reply: True,
 )
 def process_comment(comment: str, reply: str) -> str:
+    pass
+
+
+class User:
+    pass
+
+
+class Transaction:
+    pass
+
+
+@contract(
+    pre=lambda user, transaction: marvin.val_contract(
+        "The user needs to be authenticated to operate in the same market as the transaction"
+    )(user=user, transaction=transaction),
+)
+def process_payment(
+    user: Annotated[
+        User, Predicate(marvin.val_contract("User should be eligible for purchases"))
+    ],
+    transaction: Annotated[
+        Transaction,
+        Predicate(
+            marvin.val_contract(
+                "The transaction must not involved illicit drugs or other items banned in PA"
+            )
+        ),
+    ],
+) -> None:
+    # code to process the transaction
     pass

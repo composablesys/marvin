@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, type_adapter, model_validator
 
@@ -7,7 +7,12 @@ import marvin.ai.text
 
 
 class NaturalLangType(BaseModel):
-    _constraints : List[str] = []
+    other_information: Optional[str] = Field(
+        description="Other information about the current data that could be "
+        "relevant but is not otherwise captured by the other fields"
+    )
+
+    _constraints: List[str] = []
 
     def __declare_natural_lang__(self, instruction):
         self._constraints.append(instruction)
@@ -34,7 +39,9 @@ class NaturalLangType(BaseModel):
         if marvin.settings.ai.text.disable_contract:
             return True
 
-        return marvin.ai.text.validate_natural_lang_constraints(self, self.get_all_natural_lang_constraints())
+        return marvin.ai.text.validate_natural_lang_constraints(
+            self, self.get_all_natural_lang_constraints()
+        )
 
 
 if __name__ == "__main__":

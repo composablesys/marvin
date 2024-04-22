@@ -29,10 +29,10 @@ def rating_for_customer(customer_profile: str) -> Callable[[str], int]:
     pass
 
 
-# rating_func = rating_for_customer(
-#     "asian lady who cares about quality but cost is of greater concern"
-# )
-# rt = rating_func("A wonderful blender that is only $19, on sale from $100")  # return 8
+rating_func = rating_for_customer(
+    "asian lady who cares about quality but cost is of greater concern"
+)
+rt = rating_func("A wonderful blender that is only $19, on sale from $100")  # return 8
 
 
 class Location(BaseModel):
@@ -42,7 +42,9 @@ class Location(BaseModel):
         str,
         Predicate(
             marvin.val_contract("must not contain words inappropriate for children")
-        )]
+        ),
+    ]
+
 
 print(Location.model_json_schema())
 
@@ -67,5 +69,18 @@ def pleasantness(attraction: str, weather_func: Callable[[str], str]) -> str:
 
 
 # the weather in SF is really good rn, LA not so much
-# pleasantness("The Golden Gate Bridge", weather_at_city)  # return 8
-# pleasantness("Hollywood Sign", weather_at_city)  # return 2
+pleasantness("The Golden Gate Bridge", weather_at_city)  # return 8
+pleasantness("Hollywood Sign", weather_at_city)  # return 2
+
+
+application_profile = Profile(
+    name="Adam Smith",
+    education="Bachelor's in Data Science",
+    projects=["Building my own neural network at SpaceX", ...],
+)
+marvin.match(
+    application_profile,
+    ("Strong Experience in Data Science Particularly Feature Engineering", lambda: ...),
+    ("Have a degree in related field, but lacks real world projects", lambda: ...),
+    ("No relevant or very little relevant experience ", lambda: send_rejection_email()),
+)

@@ -1200,6 +1200,10 @@ def extract_map(
     )
 
 
+async def match(data: any, *match_terms: Tuple[Union[type, str], Callable]):
+    pass
+
+
 cast_async.map = cast_async_map
 cast.map = cast_map
 classify_async.map = classify_async_map
