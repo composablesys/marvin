@@ -22,7 +22,7 @@ class NaturalLangType(BaseModel):
     other_information: Optional[str] = Field(
         default=None,
         description="Other information about the current data that could be "
-        "relevant but is not otherwise captured by the other fields"
+        "relevant but is not otherwise captured by the other fields",
     )
 
     @classmethod
@@ -39,11 +39,13 @@ class NaturalLangType(BaseModel):
     def func(self):
         return self.__class__.natural_lang_constraints()
 
+
 class Sad(NaturalLangType):
     @classmethod
     def natural_lang_constraints(cls) -> List[str]:
         existing = super().natural_lang_constraints()
         return existing + ["hello"]
+
 
 print(Sad.natural_lang_constraints())
 print(Sad().func())

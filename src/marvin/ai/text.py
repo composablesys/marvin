@@ -42,6 +42,7 @@ from marvin.ai.prompts.text_prompts import (
     FUNCTION_PROMPT_HIGHER_ORDER,
     GENERATE_PROMPT,
     MODEL_CONSTRAINT_PROMPT,
+    ADDITIONAL_TYPING_CONTEXT_PROMPT,
 )
 from marvin.client.openai import AsyncMarvinClient, ChatCompletion, MarvinClient
 from marvin.types import (
@@ -51,7 +52,8 @@ from marvin.types import (
     BaseMessage as Message,
     ToolMessage,
     ToolOutput,
-    ChatCompletionMessage, Predicate,
+    ChatCompletionMessage,
+    Predicate,
 )
 from marvin.utilities.asyncio import run_sync
 from marvin.utilities.context import ctx
@@ -406,7 +408,7 @@ async def classify_async(
     data: str,
     labels: Union[Enum, list[T], type],
     instructions: str = None,
-    additional_context : str = None,
+    additional_context: str = None,
     model_kwargs: dict = None,
     client: Optional[AsyncMarvinClient] = None,
 ) -> T:
@@ -423,6 +425,7 @@ async def classify_async(
         labels (Union[Enum, list[T], type]): The labels to classify the data into.
         instructions (str, optional): Specific instructions for the
             classification. Defaults to None.
+        additional_context(str, optional): Additional Context such as type information/constraints
         model_kwargs (dict, optional): Additional keyword arguments for the
             language model. Defaults to None.
         client (AsyncMarvinClient, optional): The client to use for the AI function.
@@ -434,8 +437,12 @@ async def classify_async(
     model_kwargs = model_kwargs or {}
     return await _generate_typed_llm_response_with_logit_bias(
         prompt_template=CLASSIFY_PROMPT,
-        prompt_kwargs=dict(data=data, labels=labels, instructions=instructions,
-                           additional_context=additional_context),
+        prompt_kwargs=dict(
+            data=data,
+            labels=labels,
+            instructions=instructions,
+            additional_context=additional_context,
+        ),
         model_kwargs=model_kwargs | dict(temperature=0),
         client=client,
     )
@@ -726,7 +733,8 @@ def predicate(
         Returns:
             a bool that represents if the data satisfies the constraint given
         """
-    new_f =  fn(
+
+    new_f = fn(
         predicate_func,
         model_kwargs=model_kwargs,
         client=client,
@@ -989,7 +997,7 @@ def classify(
         labels (Union[Enum, list[T], type]): The labels to classify the data into.
         instructions (str, optional): Specific instructions for the
             classification. Defaults to None.
-        additional_context: Additional Context such as type information/constraints
+        additional_context(str, optional): Additional Context such as type information/constraints
         model_kwargs (dict, optional): Additional keyword arguments for the
             language model. Defaults to None.
         client (AsyncMarvinClient, optional): The client to use for the AI function.
@@ -1219,10 +1227,12 @@ class NaturalLangType(BaseModel):
         to declare additional natural language constraints. Note that the overridden class must
         call this method on the super() object to ensure that all constraints are populated appropriately
         from the parents unless explicitly overridden.
+        existing = super().natural_lang_constraints()
+        ...
+        return existing + new_constraints
         """
-        # super().get_all_natural_lang_constraints
-        return []
 
+        return []
 
     @model_validator(mode="after")
     def check_all_natural_lang_constraints(self):
@@ -1234,19 +1244,29 @@ class NaturalLangType(BaseModel):
         )
 
 
-async def match_async(data: any, *match_terms: Tuple[Union[type, str], Callable]):
+async def match_async(
+    data: any,
+    *match_terms: Tuple[Union[type, str], Callable],
+    model_kwargs: dict = None,
+    client: Optional[AsyncMarvinClient] = None,
+):
     TypeInfo = namedtuple("TypeInfo", "name schema constraints")
     defined_types = []
     match_labels = []
-    for match_term in match_terms:
+    for match_term, match_func in match_terms:
         if isinstance(match_term, str):
             match_labels.append(match_term)
+            continue
         elif isinstance(match_term, type):
             typing_origin = typing.get_origin(match_term)
             typing_args = typing.get_args(match_term)
             additional_constraint = ""
             if typing_origin and typing_origin is typing.Annotated:
-                predicates : List[Predicate]= list(filter(lambda type_arg: type_arg is Predicate, ))
+                predicates: List[Predicate] = list(
+                    filter(
+                        lambda type_arg: type_arg is Predicate,
+                    )
+                )
                 if predicates:
                     additional_constraint = predicates[0].constraint
                 if typing_args:
@@ -1271,29 +1291,47 @@ async def match_async(data: any, *match_terms: Tuple[Union[type, str], Callable]
                     defined_types.append(index_type)
                 if issubclass(index_type, value_type):
                     defined_types.append(value_type)
-                label = f"A Dictionary from {index_type.__name__} to {value_type.__name__}"
-            elif issubclass(match_term,BaseModel):
+                label = (
+                    f"A Dictionary from {index_type.__name__} to {value_type.__name__}"
+                )
+            elif issubclass(match_term, BaseModel):
                 label = f"A {match_term.__name__}"
                 defined_types.append(match_term)
             else:
                 raise ValueError("Unrecognized type")
             if additional_constraint:
-                final_label = f"{label} with the constraint that {additional_constraint}"
+                final_label = (
+                    f"{label} with the constraint that {additional_constraint}"
+                )
             else:
                 final_label = label
             match_labels.append(final_label)
-
         else:
             raise ValueError("Match Term must be either a string or a type")
+    type_infos = []
     for defined_type in defined_types:
         type_name = defined_type.__name__
         schema = json.dumps(defined_type.model_json_schema(mode="validation"))
         constraints = []
         if issubclass(defined_type, NaturalLangType):
-            constraints = defined_type
+            constraints = defined_type.natural_lang_constraints()
+        type_infos.append(TypeInfo(type_name, schema, constraints))
+    typing_context = Transcript(content=ADDITIONAL_TYPING_CONTEXT_PROMPT).render(
+        type_infos=type_infos
+    )
+    typing_context = typing_context if typing_context.strip() else None
+    label = await classify_async(data, match_labels, additional_context=typing_context,model_kwargs=model_kwargs, client=client)
+    label_index = match_labels.index(label)
 
-
-    pass
+def match(
+    data: any,
+    *match_terms: Tuple[Union[type, str], Callable],
+    model_kwargs: dict = None,
+    client: Optional[AsyncMarvinClient] = None,
+):
+    return run_sync(
+        match_async(data, *match_terms, model_kwargs=model_kwargs, client=client)
+    )
 
 
 cast_async.map = cast_async_map
