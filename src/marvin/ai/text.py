@@ -2,6 +2,7 @@
 Core LLM tools for working with text and structured data.
 """
 
+import re
 import inspect
 import json
 import types
@@ -26,7 +27,7 @@ from typing import (
 import pydantic
 from cachetools import LRUCache
 from openai.types.chat import ChatCompletionMessage
-from pydantic import BaseModel, model_validator, Field
+from pydantic import BaseModel, model_validator, Field, create_model
 
 import marvin
 import marvin.utilities.tools
@@ -43,6 +44,7 @@ from marvin.ai.prompts.text_prompts import (
     GENERATE_PROMPT,
     MODEL_CONSTRAINT_PROMPT,
     ADDITIONAL_TYPING_CONTEXT_PROMPT,
+    EXTRACT_TEXT_PROMPT
 )
 from marvin.client.openai import AsyncMarvinClient, ChatCompletion, MarvinClient
 from marvin.types import (
@@ -1253,10 +1255,23 @@ async def match_async(
     TypeInfo = namedtuple("TypeInfo", "name schema constraints")
     defined_types = []
     match_labels = []
+    continuations = []
     for match_term, match_func in match_terms:
         if isinstance(match_term, str):
             match_labels.append(match_term)
-            continue
+            async def continuation():
+                terms_regex = r"\{([^}]*)\}"
+                match_terms = re.findall(terms_regex, match_term)
+                MatchedResult = create_model(
+                    "MatchedResult",
+                    **{
+                        name: (typing.Any, None) for name in match_terms
+                    },
+                )
+                matched_result = MatchedResult()
+                matched_dict = matched_result.dict()
+                return match_func(**matched_dict)
+            continuations.append(continuation)
         elif isinstance(match_term, type):
             typing_origin = typing.get_origin(match_term)
             typing_args = typing.get_args(match_term)
@@ -1320,8 +1335,16 @@ async def match_async(
         type_infos=type_infos
     )
     typing_context = typing_context if typing_context.strip() else None
-    label = await classify_async(data, match_labels, additional_context=typing_context,model_kwargs=model_kwargs, client=client)
+    label = await classify_async(
+        data,
+        match_labels,
+        additional_context=typing_context,
+        model_kwargs=model_kwargs,
+        client=client,
+    )
     label_index = match_labels.index(label)
+    # label_func
+
 
 def match(
     data: any,

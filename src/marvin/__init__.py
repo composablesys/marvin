@@ -16,6 +16,7 @@ from .ai.text import (
     generate_async,
     model,
     Model,
+    NaturalLangType,
 )
 from .ai.images import paint, image
 from .ai.audio import speak_async, speak, speech, transcribe, transcribe_async
@@ -32,6 +33,7 @@ except ImportError:
 __all__ = [
     # --- text ---
     "Model",
+    "NaturalLangType",
     "cast",
     "cast_async",
     "classify",

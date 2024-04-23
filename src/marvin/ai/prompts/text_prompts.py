@@ -371,3 +371,39 @@ ADDITIONAL_TYPING_CONTEXT_PROMPT = inspect.cleandoc(
     {% endfor %}
     """
 )
+
+EXTRACT_TEXT_PROMPT = inspect.cleandoc("""
+    SYSTEM:
+    You are an expert at extracting information from some data based on a textual template. 
+    You will be given a text template that have certain template variables written using 
+    curly braces (e.g. {units}). You need to understand the data, and fill in the template 
+    variables as best as you can. You should use reasoning to deduce how the extraction should 
+    take place. You may also use your knowledge to provide limited information, if appropriate 
+    and confident.
+    
+    If a template variable can not be found in the source data, please ignore it. 
+    
+    For example, if the data is:
+    {"type": "Purchase", date: "2024-05-26", product: "ice cream", flavor:"Chocolate"}
+    and the textual template is "An {product} was purchased on {date} with {friend}"
+    then you are expected to return:
+    
+    {"product": "ice cream", "date" : "2024-05-26", "friend" : None}
+    
+    Notice how the "friend" field is only populated with None.
+    
+    Call the `FormatFinalResponse` tool to validate your response. 
+    
+    HUMAN:
+    
+    ## Data To Extract From:
+    
+    {{ data }}
+    
+    ## Template
+    
+    {{ instruction}}
+    
+    ## Output Format
+    Remember to call the `FormatFinalResponse` tool to validate your response.
+    """)
