@@ -3,9 +3,10 @@ Core LLM tools for working with text and structured data.
 """
 
 import inspect
+import json
 import types
 import typing
-from collections import deque
+from collections import deque, namedtuple
 from enum import Enum
 from functools import partial, wraps
 from typing import (
@@ -25,7 +26,7 @@ from typing import (
 import pydantic
 from cachetools import LRUCache
 from openai.types.chat import ChatCompletionMessage
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator, Field
 
 import marvin
 import marvin.utilities.tools
@@ -50,7 +51,7 @@ from marvin.types import (
     BaseMessage as Message,
     ToolMessage,
     ToolOutput,
-    ChatCompletionMessage,
+    ChatCompletionMessage, Predicate,
 )
 from marvin.utilities.asyncio import run_sync
 from marvin.utilities.context import ctx
@@ -405,6 +406,7 @@ async def classify_async(
     data: str,
     labels: Union[Enum, list[T], type],
     instructions: str = None,
+    additional_context : str = None,
     model_kwargs: dict = None,
     client: Optional[AsyncMarvinClient] = None,
 ) -> T:
@@ -432,7 +434,8 @@ async def classify_async(
     model_kwargs = model_kwargs or {}
     return await _generate_typed_llm_response_with_logit_bias(
         prompt_template=CLASSIFY_PROMPT,
-        prompt_kwargs=dict(data=data, labels=labels, instructions=instructions),
+        prompt_kwargs=dict(data=data, labels=labels, instructions=instructions,
+                           additional_context=additional_context),
         model_kwargs=model_kwargs | dict(temperature=0),
         client=client,
     )
@@ -723,13 +726,13 @@ def predicate(
         Returns:
             a bool that represents if the data satisfies the constraint given
         """
-
-    return fn(
+    new_f =  fn(
         predicate_func,
         model_kwargs=model_kwargs,
         client=client,
         extra_render_parameters={"constraint": natural_lang_constraint},
     )
+    return Predicate(new_f)
 
 
 def val_contract(
@@ -969,6 +972,7 @@ def classify(
     data: str,
     labels: Union[Enum, list[T], type],
     instructions: str = None,
+    additional_context: str = None,
     model_kwargs: dict = None,
     client: Optional[AsyncMarvinClient] = None,
 ) -> T:
@@ -985,6 +989,7 @@ def classify(
         labels (Union[Enum, list[T], type]): The labels to classify the data into.
         instructions (str, optional): Specific instructions for the
             classification. Defaults to None.
+        additional_context: Additional Context such as type information/constraints
         model_kwargs (dict, optional): Additional keyword arguments for the
             language model. Defaults to None.
         client (AsyncMarvinClient, optional): The client to use for the AI function.
@@ -997,6 +1002,7 @@ def classify(
             data=data,
             labels=labels,
             instructions=instructions,
+            additional_context=additional_context,
             model_kwargs=model_kwargs,
             client=client,
         )
@@ -1200,7 +1206,93 @@ def extract_map(
     )
 
 
-async def match(data: any, *match_terms: Tuple[Union[type, str], Callable]):
+class NaturalLangType(BaseModel):
+    other_information: Optional[str] = Field(
+        description="Other information about the current data that could be "
+        "relevant but is not otherwise captured by the other fields"
+    )
+
+    @classmethod
+    def natural_lang_constraints(cls) -> List[str]:
+        """
+        This is a function where all child classes should override if they wish
+        to declare additional natural language constraints. Note that the overridden class must
+        call this method on the super() object to ensure that all constraints are populated appropriately
+        from the parents unless explicitly overridden.
+        """
+        # super().get_all_natural_lang_constraints
+        return []
+
+
+    @model_validator(mode="after")
+    def check_all_natural_lang_constraints(self):
+        if marvin.settings.ai.text.disable_contract:
+            return True
+
+        return marvin.ai.text.validate_natural_lang_constraints(
+            self, self.__class__.natural_lang_constraints()
+        )
+
+
+async def match_async(data: any, *match_terms: Tuple[Union[type, str], Callable]):
+    TypeInfo = namedtuple("TypeInfo", "name schema constraints")
+    defined_types = []
+    match_labels = []
+    for match_term in match_terms:
+        if isinstance(match_term, str):
+            match_labels.append(match_term)
+        elif isinstance(match_term, type):
+            typing_origin = typing.get_origin(match_term)
+            typing_args = typing.get_args(match_term)
+            additional_constraint = ""
+            if typing_origin and typing_origin is typing.Annotated:
+                predicates : List[Predicate]= list(filter(lambda type_arg: type_arg is Predicate, ))
+                if predicates:
+                    additional_constraint = predicates[0].constraint
+                if typing_args:
+                    match_term = typing_args[0]
+            if match_term is int:
+                label = "An Integer"
+            elif match_term is str:
+                label = "A String"
+            elif match_term is dict:
+                label = "A Dictionary"
+            elif match_term is list:
+                label = "A list"
+            elif typing_origin is list:
+                of_type = typing_args[0]
+                if issubclass(of_type, BaseModel):
+                    defined_types.append(of_type)
+                label = f"A list of {of_type.__name__}"
+            elif typing_origin is dict:
+                index_type = typing_args[0]
+                value_type = typing_args[1]
+                if issubclass(index_type, BaseModel):
+                    defined_types.append(index_type)
+                if issubclass(index_type, value_type):
+                    defined_types.append(value_type)
+                label = f"A Dictionary from {index_type.__name__} to {value_type.__name__}"
+            elif issubclass(match_term,BaseModel):
+                label = f"A {match_term.__name__}"
+                defined_types.append(match_term)
+            else:
+                raise ValueError("Unrecognized type")
+            if additional_constraint:
+                final_label = f"{label} with the constraint that {additional_constraint}"
+            else:
+                final_label = label
+            match_labels.append(final_label)
+
+        else:
+            raise ValueError("Match Term must be either a string or a type")
+    for defined_type in defined_types:
+        type_name = defined_type.__name__
+        schema = json.dumps(defined_type.model_json_schema(mode="validation"))
+        constraints = []
+        if issubclass(defined_type, NaturalLangType):
+            constraints = defined_type
+
+
     pass
 
 

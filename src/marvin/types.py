@@ -374,3 +374,15 @@ class Audio(MarvinType):
         import marvin.audio
 
         marvin.audio.play_audio(self.data)
+
+
+class Predicate(MarvinType):
+    _func: Callable
+    constraint: str
+
+    def __init__(self, func: Callable, constraint: str):
+        self._func = func
+        self.constraint = constraint
+
+    def __call__(self, *args, **kwargs):
+        self._func(*args, **kwargs)

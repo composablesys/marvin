@@ -155,9 +155,17 @@ CLASSIFY_PROMPT = inspect.cleandoc(
     {{ data }}
     
     {% if instructions -%}
-    ## Additional instructions
+    ## Additional Instructions
     
     {{ instructions }}
+    {% endif %}
+    
+    {% if additional_context -%}
+    ## Additional Context
+    
+    Here are some additional context which may contain type definitions, type
+    constraints, or other information relevant for you to make your decision.
+    {{ additional_context }}
     {% endif %}
     
     ## Labels
@@ -348,4 +356,18 @@ TRY_CAST_PROMPT = inspect.cleandoc(
     Call the `FailedToConvert` tool if the data is wholly incompatible with the 
     response schema. 
 """
+)
+
+ADDITIONAL_TYPING_CONTEXT_PROMPT = inspect.cleandoc(
+    """
+    {% for type_info in type_infos %}
+    ### Type Information for "{{type_info.name}}"
+    Schema:
+    {{ type_info.schema }}
+    Other Constraints:
+    {% for constraint in type_info.constraints %}
+    - {{ constraint }}
+    {% endfor %}
+    {% endfor %}
+    """
 )
