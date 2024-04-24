@@ -402,7 +402,7 @@ EXTRACT_TEXT_PROMPT = inspect.cleandoc("""
     
     ## Template
     
-    {{ instruction}}
+    {{ template }}
     
     ## Output Format
     Remember to call the `FormatFinalResponse` tool to validate your response.

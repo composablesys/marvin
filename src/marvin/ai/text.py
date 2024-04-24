@@ -302,7 +302,7 @@ async def _generate_typed_llm_response_with_logit_bias(
 
 
 async def cast_async(
-    data: str,
+    data: any,
     target: type[T] = None,
     instructions: Optional[str] = None,
     model_kwargs: Optional[dict] = None,
@@ -626,6 +626,9 @@ def fn(
                     )
             # noinspection PyUnboundLocalVariable
             extra_prompt_kwargs["return_annotation"] = f"{signature}"
+            # TODO: Make this coroutine. I think this would involve making the CallableWithMetaData
+            # having a async def __call__
+
             post_processor = lambda result: fn(  # noqa E731
                 CallableWithMetaData(
                     name=result.function_name,
@@ -717,6 +720,7 @@ def validate_natural_lang_constraints(
     )
 
 
+# TODO: make coroutine
 def predicate(
     natural_lang_constraint="anything",
     model_kwargs: Optional[dict] = None,
@@ -939,7 +943,7 @@ def model(
 
 
 def cast(
-    data: str,
+    data: any,
     target: type[T] = None,
     instructions: Optional[str] = None,
     model_kwargs: Optional[dict] = None,
@@ -1143,7 +1147,7 @@ def classify_map(
 
 
 async def cast_async_map(
-    data: list[str],
+    data: list,
     target: type[T] = None,
     instructions: Optional[str] = None,
     model_kwargs: Optional[dict] = None,
@@ -1162,7 +1166,7 @@ async def cast_async_map(
 
 
 def cast_map(
-    data: list[str],
+    data: list,
     target: type[T] = None,
     instructions: Optional[str] = None,
     model_kwargs: Optional[dict] = None,
@@ -1249,27 +1253,38 @@ class NaturalLangType(BaseModel):
 async def match_async(
     data: any,
     *match_terms: Tuple[Union[type, str], Callable],
+    fall_through: Optional[Callable],
     model_kwargs: dict = None,
     client: Optional[AsyncMarvinClient] = None,
 ):
     TypeInfo = namedtuple("TypeInfo", "name schema constraints")
-    defined_types = []
-    match_labels = []
-    continuations = []
+    defined_types: List[Type[BaseModel]] = []
+    match_labels: List[str] = []
+    continuations: List[typing.Awaitable[typing.Any]] = []
     for match_term, match_func in match_terms:
         if isinstance(match_term, str):
             match_labels.append(match_term)
 
             async def continuation():
                 terms_regex = r"\{([^}]*)\}"
-                match_terms = re.findall(terms_regex, match_term)
+                match_groups = re.findall(terms_regex, match_term)
+                # noinspection PyPep8Naming
                 MatchedResult = create_model(
                     "MatchedResult",
-                    **{name: (typing.Any, None) for name in match_terms},
+                    **{name: (typing.Any, None) for name in match_groups},
                 )
-                matched_result = MatchedResult()
+                matched_result = await _generate_typed_llm_response_with_tool(
+                    prompt_template=EXTRACT_TEXT_PROMPT,
+                    type_=MatchedResult,
+                    prompt_kwargs=dict(data=data, template=match_term),
+                    model_kwargs=model_kwargs,
+                    client=client,
+                )
                 matched_dict = matched_result.dict()
-                return match_func(**matched_dict)
+                if inspect.iscoroutinefunction(match_func):
+                    return await match_func(**matched_dict)
+                else:
+                    return match_func(**matched_dict)
 
             continuations.append(continuation)
         elif isinstance(match_term, type):
@@ -1278,9 +1293,7 @@ async def match_async(
             additional_constraint = ""
             if typing_origin and typing_origin is typing.Annotated:
                 predicates: List[Predicate] = list(
-                    filter(
-                        lambda type_arg: type_arg is Predicate,
-                    )
+                    filter(lambda type_arg: type_arg is Predicate, typing_args)
                 )
                 if predicates:
                     additional_constraint = predicates[0].constraint
@@ -1321,8 +1334,29 @@ async def match_async(
             else:
                 final_label = label
             match_labels.append(final_label)
+
+            async def continuation():
+                casted = await cast_async(
+                    data, match_term, model_kwargs=model_kwargs, client=client
+                )
+                if inspect.iscoroutinefunction(match_func):
+                    return await match_func(casted)
+                else:
+                    return match_func(casted)
+
+            continuations.append(continuation)
         else:
             raise ValueError("Match Term must be either a string or a type")
+    if fall_through:
+        match_labels.append("None of the above")
+
+        async def continuation():
+            if inspect.iscoroutinefunction(fall_through):
+                return await fall_through()
+            else:
+                return fall_through()
+
+        continuations.append(continuation)
     type_infos = []
     for defined_type in defined_types:
         type_name = defined_type.__name__
@@ -1343,7 +1377,7 @@ async def match_async(
         client=client,
     )
     label_index = match_labels.index(label)
-    # label_func
+    return await continuations[label_index]
 
 
 def match(
