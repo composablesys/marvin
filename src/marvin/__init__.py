@@ -17,6 +17,7 @@ from .ai.text import (
     model,
     Model,
     NaturalLangType,
+    func_contract
 )
 from .ai.images import paint, image
 from .ai.audio import speak_async, speak, speech, transcribe, transcribe_async
@@ -44,6 +45,7 @@ __all__ = [
     "fn",
     "predicate",
     "val_contract",
+    "func_contract",
     "match",
     "generate",
     "generate_async",

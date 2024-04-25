@@ -104,7 +104,6 @@ with temporary_settings(ai__text__disable_contract=False):
 def process_comment(comment: str, reply: str) -> str:
     pass
 
-
 class User:
     pass
 
@@ -115,8 +114,8 @@ class Transaction:
 
 @contract(
     pre=lambda user, transaction: marvin.val_contract(
-        "The user needs to be authenticated to operate in the same market as the transaction"
-    )(user=user, transaction=transaction),
+        "The user needs to be authenticated to operate in the same market as the transaction" )
+        (user=user, transaction=transaction),
 )
 def process_payment(
     user: Annotated[

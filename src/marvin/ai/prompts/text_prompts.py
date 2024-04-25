@@ -146,7 +146,9 @@ CLASSIFY_PROMPT = inspect.cleandoc(
     consider "truthy" or affirmative inputs to be "true". If the label information
     is a schema, then you are to determine if the source data likely contains enough
     information to convert to that schema. The source information does not necessarily
-    have to be in that schema
+    have to be in that schema. If there are multiple choices that seem appropriate
+    choose the most restrictive one. i.e. the one that has the most requirements or 
+    constraints.     
         
     HUMAN: 
     
@@ -402,7 +404,7 @@ EXTRACT_TEXT_PROMPT = inspect.cleandoc("""
     
     ## Template
     
-    {{ template }}
+    {{ textual_template }}
     
     ## Output Format
     Remember to call the `FormatFinalResponse` tool to validate your response.

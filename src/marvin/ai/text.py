@@ -11,6 +11,9 @@ from collections import deque, namedtuple
 from enum import Enum
 from functools import partial, wraps
 from typing import (
+    Annotated,
+    Awaitable,
+    Any,
     Callable,
     GenericAlias,
     List,
@@ -27,7 +30,7 @@ from typing import (
 import pydantic
 from cachetools import LRUCache
 from openai.types.chat import ChatCompletionMessage
-from pydantic import BaseModel, model_validator, Field, create_model
+from pydantic import BaseModel, model_validator, Field, create_model, validate_call
 
 import marvin
 import marvin.utilities.tools
@@ -47,6 +50,7 @@ from marvin.ai.prompts.text_prompts import (
     EXTRACT_TEXT_PROMPT,
 )
 from marvin.client.openai import AsyncMarvinClient, ChatCompletion, MarvinClient
+from marvin.settings import temporary_settings
 from marvin.types import (
     ChatRequest,
     ChatResponse,
@@ -594,7 +598,7 @@ def fn(
         elif (
             isinstance(model.return_annotation, Callable)
             and not isinstance(model.return_annotation, type)
-            and not typing.get_origin(model.return_annotation) is typing.Annotated
+            and not typing.get_origin(model.return_annotation) is Annotated
         ):
             type_ = pydantic.create_model(
                 "PromptAndName",
@@ -626,8 +630,6 @@ def fn(
                     )
             # noinspection PyUnboundLocalVariable
             extra_prompt_kwargs["return_annotation"] = f"{signature}"
-            # TODO: Make this coroutine. I think this would involve making the CallableWithMetaData
-            # having a async def __call__
 
             post_processor = lambda result: fn(  # noqa E731
                 CallableWithMetaData(
@@ -720,7 +722,6 @@ def validate_natural_lang_constraints(
     )
 
 
-# TODO: make coroutine
 def predicate(
     natural_lang_constraint="anything",
     model_kwargs: Optional[dict] = None,
@@ -746,7 +747,7 @@ def predicate(
         client=client,
         extra_render_parameters={"constraint": natural_lang_constraint},
     )
-    return Predicate(new_f)
+    return Predicate(func=new_f,constraint=natural_lang_constraint)
 
 
 def val_contract(
@@ -1223,8 +1224,38 @@ def extract_map(
 class NaturalLangType(BaseModel):
     other_information: Optional[str] = Field(
         description="Other information about the current data that could be "
-        "relevant but is not otherwise captured by the other fields"
+        "relevant but is not otherwise captured by the other fields. "
+        "Completely Optional!",
+        default=None,
     )
+
+    async def property_async(
+        self,
+        description: str,
+        target: Type[T] = None,
+        model_kwargs: Optional[dict] = None,
+        client: Optional[AsyncMarvinClient] = None,
+    ):
+        return await extract_async(
+            self,
+            target=target,
+            instructions=description,
+            model_kwargs=model_kwargs,
+            client=client,
+        )
+
+    def property(
+        self,
+        description: str,
+        target: Type[T] = None,
+        model_kwargs: Optional[dict] = None,
+        client: Optional[AsyncMarvinClient] = None,
+    ):
+        return run_sync(
+            self.property_async(
+                description, target=target, model_kwargs=model_kwargs, client=client
+            )
+        )
 
     @classmethod
     def natural_lang_constraints(cls) -> List[str]:
@@ -1243,152 +1274,218 @@ class NaturalLangType(BaseModel):
     @model_validator(mode="after")
     def check_all_natural_lang_constraints(self):
         if marvin.settings.ai.text.disable_contract:
-            return True
+            return self
 
-        return marvin.ai.text.validate_natural_lang_constraints(
+        if marvin.ai.text.validate_natural_lang_constraints(
             self, self.__class__.natural_lang_constraints()
-        )
+        ):
+            return self
+        else:
+            raise pydantic.ValidationError(
+                "Natural language constraints not met:"
+                + "\n".join(self.__class__.natural_lang_constraints())
+                + "\n"
+            )
 
 
 async def match_async(
     data: any,
-    *match_terms: Tuple[Union[type, str], Callable],
-    fall_through: Optional[Callable],
+    *match_terms: Tuple[Union[type, str], Union[Callable, Awaitable]],
+    fall_through: Optional[Callable] = None,
     model_kwargs: dict = None,
     client: Optional[AsyncMarvinClient] = None,
 ):
-    TypeInfo = namedtuple("TypeInfo", "name schema constraints")
-    defined_types: List[Type[BaseModel]] = []
-    match_labels: List[str] = []
-    continuations: List[typing.Awaitable[typing.Any]] = []
-    for match_term, match_func in match_terms:
-        if isinstance(match_term, str):
-            match_labels.append(match_term)
+    contract_setting = marvin.settings.ai.text.disable_contract
+    with temporary_settings(ai__text__disable_contract=True):
+        TypeInfo = namedtuple("TypeInfo", "name schema constraints")
+        defined_types: List[Type[BaseModel]] = []
+        match_labels: List[str] = []
+        continuations = []
+        for match_term, match_func in match_terms:
+            if isinstance(match_term, str):
+                match_labels.append(match_term)
+
+                async def continuation(match_term_inner, match_func_inner):
+                    terms_regex = r"\{([^}]*)\}"
+                    match_groups = re.findall(terms_regex, match_term_inner)
+                    # noinspection PyPep8Naming
+                    MatchedResult = create_model(
+                        "MatchedResult",
+                        **{name: (Any, None) for name in match_groups},
+                    )
+                    matched_result = await _generate_typed_llm_response_with_tool(
+                        prompt_template=EXTRACT_TEXT_PROMPT,
+                        type_=MatchedResult,
+                        prompt_kwargs=dict(
+                            data=data, textual_template=match_term_inner
+                        ),
+                        model_kwargs=model_kwargs,
+                        client=client,
+                    )
+                    matched_dict = matched_result.dict()
+                    with temporary_settings(
+                        ai__text__disable_contract=contract_setting
+                    ):
+                        if inspect.iscoroutinefunction(match_func_inner):
+                            return await match_func_inner(**matched_dict)
+                        else:
+                            return match_func_inner(**matched_dict)
+
+                continuations.append((continuation, (match_term, match_func)))
+            elif isinstance(match_term, type):
+                typing_origin = typing.get_origin(match_term)
+                typing_args = typing.get_args(match_term)
+                additional_constraint = ""
+                if typing_origin and typing_origin is Annotated:
+                    predicates: List[Predicate] = list(
+                        filter(lambda type_arg: type_arg is Predicate, typing_args)
+                    )
+                    if predicates:
+                        additional_constraint = predicates[0].constraint
+                    if typing_args:
+                        match_term = typing_args[0]
+                if match_term is int:
+                    label = "An Integer"
+                elif match_term is str:
+                    label = "A String"
+                elif match_term is dict:
+                    label = "A Dictionary"
+                elif match_term is list:
+                    label = "A list"
+                elif typing_origin is list:
+                    of_type = typing_args[0]
+                    if issubclass(of_type, BaseModel):
+                        defined_types.append(of_type)
+                    label = f"A list of {of_type.__name__}"
+                elif typing_origin is dict:
+                    index_type = typing_args[0]
+                    value_type = typing_args[1]
+                    if issubclass(index_type, BaseModel):
+                        defined_types.append(index_type)
+                    if issubclass(index_type, value_type):
+                        defined_types.append(value_type)
+                    label = f"A Dictionary from {index_type.__name__} to {value_type.__name__}"
+                elif issubclass(match_term, BaseModel):
+                    label = f"Something of {match_term.__name__} type"
+                    defined_types.append(match_term)
+                else:
+                    raise ValueError("Unrecognized type")
+                if additional_constraint:
+                    final_label = (
+                        f"{label} with the constraint that {additional_constraint}"
+                    )
+                else:
+                    final_label = label
+                match_labels.append(final_label)
+
+                async def continuation(match_term_inner, match_func_inner):
+                    casted = await cast_async(
+                        data, match_term_inner, model_kwargs=model_kwargs, client=client
+                    )
+                    with temporary_settings(
+                        ai__text__disable_contract=contract_setting
+                    ):
+                        if inspect.iscoroutinefunction(match_func_inner):
+                            return await match_func_inner(casted)
+                        else:
+                            return match_func_inner(casted)
+
+                continuations.append((continuation, (match_term, match_func)))
+            else:
+                raise ValueError("Match Term must be either a string or a type")
+        if fall_through:
+            match_labels.append("None of the above")
 
             async def continuation():
-                terms_regex = r"\{([^}]*)\}"
-                match_groups = re.findall(terms_regex, match_term)
-                # noinspection PyPep8Naming
-                MatchedResult = create_model(
-                    "MatchedResult",
-                    **{name: (typing.Any, None) for name in match_groups},
-                )
-                matched_result = await _generate_typed_llm_response_with_tool(
-                    prompt_template=EXTRACT_TEXT_PROMPT,
-                    type_=MatchedResult,
-                    prompt_kwargs=dict(data=data, template=match_term),
-                    model_kwargs=model_kwargs,
-                    client=client,
-                )
-                matched_dict = matched_result.dict()
-                if inspect.iscoroutinefunction(match_func):
-                    return await match_func(**matched_dict)
-                else:
-                    return match_func(**matched_dict)
+                with temporary_settings(ai__text__disable_contract=contract_setting):
+                    if inspect.iscoroutinefunction(fall_through):
+                        return await fall_through()
+                    else:
+                        return fall_through()
 
-            continuations.append(continuation)
-        elif isinstance(match_term, type):
-            typing_origin = typing.get_origin(match_term)
-            typing_args = typing.get_args(match_term)
-            additional_constraint = ""
-            if typing_origin and typing_origin is typing.Annotated:
-                predicates: List[Predicate] = list(
-                    filter(lambda type_arg: type_arg is Predicate, typing_args)
-                )
-                if predicates:
-                    additional_constraint = predicates[0].constraint
-                if typing_args:
-                    match_term = typing_args[0]
-            if match_term is int:
-                label = "An Integer"
-            elif match_term is str:
-                label = "A String"
-            elif match_term is dict:
-                label = "A Dictionary"
-            elif match_term is list:
-                label = "A list"
-            elif typing_origin is list:
-                of_type = typing_args[0]
-                if issubclass(of_type, BaseModel):
-                    defined_types.append(of_type)
-                label = f"A list of {of_type.__name__}"
-            elif typing_origin is dict:
-                index_type = typing_args[0]
-                value_type = typing_args[1]
-                if issubclass(index_type, BaseModel):
-                    defined_types.append(index_type)
-                if issubclass(index_type, value_type):
-                    defined_types.append(value_type)
-                label = (
-                    f"A Dictionary from {index_type.__name__} to {value_type.__name__}"
-                )
-            elif issubclass(match_term, BaseModel):
-                label = f"A {match_term.__name__}"
-                defined_types.append(match_term)
-            else:
-                raise ValueError("Unrecognized type")
-            if additional_constraint:
-                final_label = (
-                    f"{label} with the constraint that {additional_constraint}"
-                )
-            else:
-                final_label = label
-            match_labels.append(final_label)
-
-            async def continuation():
-                casted = await cast_async(
-                    data, match_term, model_kwargs=model_kwargs, client=client
-                )
-                if inspect.iscoroutinefunction(match_func):
-                    return await match_func(casted)
-                else:
-                    return match_func(casted)
-
-            continuations.append(continuation)
-        else:
-            raise ValueError("Match Term must be either a string or a type")
-    if fall_through:
-        match_labels.append("None of the above")
-
-        async def continuation():
-            if inspect.iscoroutinefunction(fall_through):
-                return await fall_through()
-            else:
-                return fall_through()
-
-        continuations.append(continuation)
-    type_infos = []
-    for defined_type in defined_types:
-        type_name = defined_type.__name__
-        schema = json.dumps(defined_type.model_json_schema(mode="validation"))
-        constraints = []
-        if issubclass(defined_type, NaturalLangType):
-            constraints = defined_type.natural_lang_constraints()
-        type_infos.append(TypeInfo(type_name, schema, constraints))
-    typing_context = Transcript(content=ADDITIONAL_TYPING_CONTEXT_PROMPT).render(
-        type_infos=type_infos
-    )
-    typing_context = typing_context if typing_context.strip() else None
-    label = await classify_async(
-        data,
-        match_labels,
-        additional_context=typing_context,
-        model_kwargs=model_kwargs,
-        client=client,
-    )
-    label_index = match_labels.index(label)
-    return await continuations[label_index]
+            continuations.append((continuation, ()))
+        type_infos = []
+        for defined_type in defined_types:
+            type_name = defined_type.__name__
+            schema = json.dumps(defined_type.model_json_schema(mode="validation"))
+            constraints = []
+            if issubclass(defined_type, NaturalLangType):
+                constraints = defined_type.natural_lang_constraints()
+            type_infos.append(TypeInfo(type_name, schema, constraints))
+        typing_context = Transcript(content=ADDITIONAL_TYPING_CONTEXT_PROMPT).render(
+            type_infos=type_infos
+        )
+        typing_context = typing_context if typing_context.strip() else None
+        label = await classify_async(
+            data,
+            match_labels,
+            additional_context=typing_context,
+            model_kwargs=model_kwargs,
+            client=client,
+        )
+        label_index = match_labels.index(label)
+        await_func = continuations[label_index][0]
+        args = continuations[label_index][1]
+        return await await_func(*args)
 
 
 def match(
     data: any,
     *match_terms: Tuple[Union[type, str], Callable],
+    fall_through: Optional[Callable] = None,
     model_kwargs: dict = None,
     client: Optional[AsyncMarvinClient] = None,
 ):
     return run_sync(
-        match_async(data, *match_terms, model_kwargs=model_kwargs, client=client)
+        match_async(
+            data,
+            *match_terms,
+            fall_through=fall_through,
+            model_kwargs=model_kwargs,
+            client=client,
+        )
     )
+
+
+def func_contract(func: Callable = None, pre: Callable = None, post: Callable = None,
+                  validate_return: bool = False,
+                  model_kwargs: Optional[dict] = None,
+                  client: Optional[AsyncMarvinClient] = None):
+    if func is None:
+        return partial(func_contract, pre=pre,post=post,model_kwargs=model_kwargs, client=client)
+
+    inner_func = validate_call(func, validate_return=validate_return)
+
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        if marvin.settings.ai.text.disable_contract:
+            return func(*args,**kwargs)
+
+        signature = inspect.signature(func)
+
+        # Merge args and kwargs into a single dictionary for easier processing
+        bound_arguments = signature.bind(*args, **kwargs)
+        bound_arguments.apply_defaults()
+        all_arguments = bound_arguments.arguments
+        if pre:
+            pre_sig = inspect.signature(pre)
+            arg_names = list(filter(lambda param: param.name in all_arguments.keys(), pre_sig.parameters.values()))
+            pre_dict = {key.name: all_arguments[key.name] for key in arg_names}
+            condition = pre(**pre_dict)
+            if not condition:
+                raise ValueError("Pre condition not met")
+
+        result = inner_func(*args,**kwargs)
+
+        if post:
+            post_sig = inspect.signature(post)
+            arg_names = list(filter(lambda param: param.name in all_arguments.keys(), post_sig.parameters.values()))
+            post_dict = {key: all_arguments[key] for key in arg_names}
+            post_dict["result"] = result
+            if not post(**post_dict):
+                raise ValueError("Post Condition Not Met")
+        return result
+    return wrapper
 
 
 cast_async.map = cast_async_map
