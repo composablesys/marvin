@@ -17,7 +17,7 @@ from .ai.text import (
     model,
     Model,
     NaturalLangType,
-    func_contract
+    func_contract,
 )
 from .ai.images import paint, image
 from .ai.audio import speak_async, speak, speech, transcribe, transcribe_async

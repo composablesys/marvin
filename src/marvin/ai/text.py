@@ -747,7 +747,7 @@ def predicate(
         client=client,
         extra_render_parameters={"constraint": natural_lang_constraint},
     )
-    return Predicate(func=new_f,constraint=natural_lang_constraint)
+    return Predicate(func=new_f, constraint=natural_lang_constraint)
 
 
 def val_contract(
@@ -1447,19 +1447,25 @@ def match(
     )
 
 
-def func_contract(func: Callable = None, pre: Callable = None, post: Callable = None,
-                  validate_return: bool = False,
-                  model_kwargs: Optional[dict] = None,
-                  client: Optional[AsyncMarvinClient] = None):
+def func_contract(
+    func: Callable = None,
+    pre: Callable = None,
+    post: Callable = None,
+    validate_return: bool = False,
+    model_kwargs: Optional[dict] = None,
+    client: Optional[AsyncMarvinClient] = None,
+):
     if func is None:
-        return partial(func_contract, pre=pre,post=post,model_kwargs=model_kwargs, client=client)
+        return partial(
+            func_contract, pre=pre, post=post, model_kwargs=model_kwargs, client=client
+        )
 
     inner_func = validate_call(func, validate_return=validate_return)
 
     @wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         if marvin.settings.ai.text.disable_contract:
-            return func(*args,**kwargs)
+            return func(*args, **kwargs)
 
         signature = inspect.signature(func)
 
@@ -1469,22 +1475,33 @@ def func_contract(func: Callable = None, pre: Callable = None, post: Callable = 
         all_arguments = bound_arguments.arguments
         if pre:
             pre_sig = inspect.signature(pre)
-            arg_names = list(filter(lambda param: param.name in all_arguments.keys(), pre_sig.parameters.values()))
+            arg_names = list(
+                filter(
+                    lambda param: param.name in all_arguments.keys(),
+                    pre_sig.parameters.values(),
+                )
+            )
             pre_dict = {key.name: all_arguments[key.name] for key in arg_names}
             condition = pre(**pre_dict)
             if not condition:
                 raise ValueError("Pre condition not met")
 
-        result = inner_func(*args,**kwargs)
+        result = inner_func(*args, **kwargs)
 
         if post:
             post_sig = inspect.signature(post)
-            arg_names = list(filter(lambda param: param.name in all_arguments.keys(), post_sig.parameters.values()))
+            arg_names = list(
+                filter(
+                    lambda param: param.name in all_arguments.keys(),
+                    post_sig.parameters.values(),
+                )
+            )
             post_dict = {key: all_arguments[key] for key in arg_names}
             post_dict["result"] = result
             if not post(**post_dict):
                 raise ValueError("Post Condition Not Met")
         return result
+
     return wrapper
 
 

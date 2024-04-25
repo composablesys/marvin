@@ -4,6 +4,7 @@ from typing import Callable, Any
 import pydantic
 from annotated_types import Predicate
 from dotenv import load_dotenv
+
 load_dotenv()
 from typing import Annotated, get_type_hints, Callable
 
@@ -24,12 +25,14 @@ from marvin.settings import temporary_settings
 def process_comment(comment: str, reply: str) -> str:
     return f"comment: {comment}\nreply: {reply}"
 
+
 # with temporary_settings(ai__text__disable_contract=False):
 #     try:
 #         process_comment("This apple is great!", "IKEA stock is down a lot")
 #     except Exception as e:
 #         print(e)
 #     print(process_comment("This apple is great!", "I agree, but the apple is very sweet and so could be unhealthy"))
+
 
 @marvin.func_contract
 def reply_comment(
@@ -55,7 +58,6 @@ with temporary_settings(ai__text__disable_contract=False):
     except Exception as e:
         print("The second call is flagged as a contract violation")
         print(e)
-
 
 
 # class Pilot(marvin.NaturalLangType):
