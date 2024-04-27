@@ -294,6 +294,7 @@ MODEL_CONSTRAINT_PROMPT = inspect.cleandoc(
     HUMAN: 
 
     ## Data 
+    {{ data_type }} : 
     {{ data }} 
     
     ## Constraints 
@@ -301,8 +302,6 @@ MODEL_CONSTRAINT_PROMPT = inspect.cleandoc(
     {% for constraint in constraints%}
     - {{ constraint }} 
     {% endfor %}
-
-    ASSISTANT: The constraints are
     """
 )
 

@@ -694,14 +694,16 @@ def fn(
 
 
 async def validate_natural_lang_constraints_async(
-    data: any,
+    data: BaseModel,
     constraints: List[str],
     model_kwargs: Optional[dict] = None,
     client: Optional[MarvinClient] = None,
 ):
+
+
     result = await _generate_typed_llm_response_with_tool(
         prompt_template=MODEL_CONSTRAINT_PROMPT,
-        prompt_kwargs=dict(data=data, constraints=constraints),
+        prompt_kwargs=dict(data=data.model_dump_json(), data_type= type(data).__name__ , constraints=constraints),
         type_=bool,
         model_kwargs=model_kwargs,
         client=client,
@@ -715,7 +717,7 @@ def validate_natural_lang_constraints(
     model_kwargs: Optional[dict] = None,
     client: Optional[MarvinClient] = None,
 ):
-    run_sync(
+    return run_sync(
         validate_natural_lang_constraints_async(
             data, constraints, model_kwargs=model_kwargs, client=client
         )
@@ -1275,13 +1277,15 @@ class NaturalLangType(BaseModel):
     def check_all_natural_lang_constraints(self):
         if marvin.settings.ai.text.disable_contract:
             return self
-
+        constraints = self.__class__.natural_lang_constraints()
+        if not constraints:
+            return self
         if marvin.ai.text.validate_natural_lang_constraints(
-            self, self.__class__.natural_lang_constraints()
+            self, constraints
         ):
             return self
         else:
-            raise pydantic.ValidationError(
+            raise ValueError(
                 "Natural language constraints not met:"
                 + "\n".join(self.__class__.natural_lang_constraints())
                 + "\n"
@@ -1503,7 +1507,6 @@ def func_contract(
         return result
 
     return wrapper
-
 
 cast_async.map = cast_async_map
 cast.map = cast_map
