@@ -60,32 +60,32 @@ with temporary_settings(ai__text__disable_contract=False):
         print(e)
 
 
-# class Pilot(marvin.NaturalLangType):
-#     id: int
-#     name: str
-#     plane_model: str
-#     certificate: str
-#     airport: str
-#
-#
-# class AdvancedPilot(Pilot):
-#     @classmethod
-#     def natural_lang_constraints(cls) -> List[str]:
-#         existing = super().natural_lang_constraints()
-#         new_constraints = [
-#             "The pilot must hold the appropriate certificate for the plane_model, "
-#             + 'which should also be a plane that is considered "big" with paid passengers'
-#         ]
-#         return existing + new_constraints
+class Pilot(marvin.NaturalLangType):
+    id: int
+    name: str
+    plane_model: str
+    certificate: str
+    airport: str
 
 
-# marvin.match(
-#     "Noah Singer, employee number 321, is a Boeing 747 Pilot "
-#     "holding an Airline Transport Pilot with 1000 hours of operations. "
-#     "He mainly flies from KPIT. ",
-#     (AdvancedPilot, lambda pilot: print(pilot)),
-#     fall_through=lambda : print("No Advanced Pilot found")
-# )
+class AdvancedPilot(Pilot):
+    @classmethod
+    def natural_lang_constraints(cls) -> List[str]:
+        existing = super().natural_lang_constraints()
+        new_constraints = [
+            "The pilot must hold the appropriate certificate for the plane_model, "
+            + 'which should also be a plane that is considered "big" with paid passengers'
+        ]
+        return existing + new_constraints
+
+
+marvin.match(
+    "Noah Singer, employee number 321, is a Boeing 747 Pilot "
+    "holding an Airline Transport Pilot with 1000 hours of operations. "
+    "He mainly flies from KPIT. ",
+    (AdvancedPilot, lambda pilot: print(pilot)),
+    fall_through=lambda : print("No Advanced Pilot found")
+)
 
 
 # marvin.match(
