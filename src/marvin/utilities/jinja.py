@@ -2,9 +2,10 @@
 
 import inspect
 import re
+import types
 from datetime import datetime
 from functools import cached_property
-from typing import Any, ClassVar, Pattern, Union
+from typing import Any, ClassVar, Pattern, Union, Callable
 from zoneinfo import ZoneInfo
 
 from jinja2 import Environment as JinjaEnvironment
@@ -57,6 +58,10 @@ class BaseEnvironment(BaseModel):
         }
     )
 
+    def __init__(self, tests: dict[str, Callable[[any], bool]]):
+        super().__init__()
+        self.environment.tests = self.environment.tests | tests
+
     @model_validator(mode="after")
     def setup_globals(self: Self) -> Self:
         self.environment.globals.update(self.globals)  # type: ignore
@@ -86,7 +91,11 @@ class BaseEnvironment(BaseModel):
         return template.render(**kwargs).strip()
 
 
-Environment = BaseEnvironment()
+def is_func_type(value):
+    return isinstance(value, types.FunctionType)
+
+
+Environment = BaseEnvironment(tests={"is_func_type": is_func_type})
 
 
 def split_text_by_tokens(

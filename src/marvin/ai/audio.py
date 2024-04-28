@@ -161,7 +161,7 @@ def speech(
 
     @wraps(fn)
     async def async_wrapper(*args, **kwargs):
-        model = PythonFunction.from_function_call(fn, *args, **kwargs)
+        model = PythonFunction.from_function_call(fn, {}, *args, **kwargs)
         return await speak_async(
             text=model.return_value, voice=voice, model_kwargs=model_kwargs
         )

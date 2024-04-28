@@ -1,0 +1,11 @@
+- TODO list
+    - Need a way to emit natural language annotations from the contract?
+        - Look into __get_pydantic_core_schema__ for this
+            - the second example where they actually do the thrid party type is the most helpful
+        - Will do this after the project is due
+    - We/I should generate it so that Annotated stuff is shown as a separate field (constraints)
+        - the compositional constraints are outputted as plain text
+    - validate_call why did I not realize this existed ??
+        - this is basically contract
+        - gotta implement this
+

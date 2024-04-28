@@ -1,3 +1,8 @@
+# IMPORTANT
+
+This is a fork for Marvin for my research. I don't expect this to have wider adoption beyond my own research. Please see [here](ResearchReadMe.md) for some more information.
+
+
 <p align="center">
   <img src="docs/assets/images/heroes/it_hates_me_hero.png" style="width: 95%; height: auto;"/>
 </p>

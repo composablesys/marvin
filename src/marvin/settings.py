@@ -213,6 +213,7 @@ class OpenAISettings(MarvinSettings):
 
 class TextAISettings(MarvinSettings):
     model_config = SettingsConfigDict(env_prefix="marvin_ai_text_", extra="ignore")
+    disable_contract: bool = True
     generate_cache_token_cap: int = Field(600)
 
 

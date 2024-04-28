@@ -1,6 +1,9 @@
 from .settings import settings
 
 from .ai.text import (
+    predicate,
+    val_contract,
+    match,
     fn,
     cast,
     cast_async,
@@ -13,6 +16,8 @@ from .ai.text import (
     generate_async,
     model,
     Model,
+    NaturalLangType,
+    func_contract,
 )
 from .ai.images import paint, image
 from .ai.audio import speak_async, speak, speech, transcribe, transcribe_async
@@ -29,6 +34,7 @@ except ImportError:
 __all__ = [
     # --- text ---
     "Model",
+    "NaturalLangType",
     "cast",
     "cast_async",
     "classify",
@@ -37,6 +43,10 @@ __all__ = [
     "extract",
     "extract_async",
     "fn",
+    "predicate",
+    "val_contract",
+    "func_contract",
+    "match",
     "generate",
     "generate_async",
     "model",

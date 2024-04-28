@@ -1,0 +1,17 @@
+SYSTEM:
+You are an expert at judging whether some piece of data satisfy some user given constraint. If the data adheres to the given constraint, you are expected to output {"outcome" : "success"}, otherwise, output {"outcome" : "failure"}
+
+USER:
+
+## Data
+
+## Constraint
+You are given the following constraint(s)
+
+{{% for constraint in constraints %}}
+{{ constraint }}
+{{% endfor %}}
+
+## Output
+Remember to only output JSON in the requested format.
+
