@@ -63,7 +63,9 @@ class ModelSchemaGenerator(GenerateJsonSchema):
         return json_schema
 
 
-def tool_from_type(type_: U, tool_name: str = None, chain_of_thought : bool = False) -> FunctionTool[U]:
+def tool_from_type(
+    type_: U, tool_name: str = None, chain_of_thought: bool = False
+) -> FunctionTool[U]:
     """
     Creates an OpenAI-compatible tool from a Python type.
     """
@@ -73,16 +75,22 @@ def tool_from_type(type_: U, tool_name: str = None, chain_of_thought : bool = Fa
     else:
         metadata = FieldInfo(description="The formatted response")
     from collections import OrderedDict
+
     fields = OrderedDict()
     if chain_of_thought:
-        fields["reason"] =(str, Field(description="What is the reason for the value generated. Think step by step"))
-    fields["value"] =(type_, metadata)
+        fields["reason"] = (
+            str,
+            Field(
+                description="What is the reason for the value generated. Think step by step"
+            ),
+        )
+    fields["value"] = (type_, metadata)
 
     model = create_model(
         tool_name or "FormatFinalResponse",
         __doc__="Format the final response with valid JSON.",
         __module__=__name__,
-        **fields
+        **fields,
     )
 
     def tool_fn(**data) -> U:

@@ -2,6 +2,7 @@
 Core LLM tools for working with text and structured data.
 """
 
+import collections.abc
 import re
 import inspect
 import json
@@ -567,7 +568,13 @@ def fn(
     """
 
     if func is None:
-        return partial(fn, model_kwargs=model_kwargs, client=client)
+        return partial(
+            fn,
+            model_kwargs=model_kwargs,
+            client=client,
+            extra_render_parameters=extra_render_parameters,
+            max_tool_usage_times=max_tool_usage_times,
+        )
 
     @wraps(func)
     async def async_wrapper(*args, **kwargs):
@@ -595,11 +602,7 @@ def fn(
             post_processor = lambda result: result.value  # noqa E731
 
         # create a callable
-        elif (
-            isinstance(model.return_annotation, Callable)
-            and not isinstance(model.return_annotation, type)
-            and not typing.get_origin(model.return_annotation) is Annotated
-        ):
+        elif typing.get_origin(model.return_annotation) is collections.abc.Callable:
             type_ = pydantic.create_model(
                 "PromptAndName",
                 prompt=(str, pydantic.Field(description="Prompt Generated")),
@@ -699,11 +702,13 @@ async def validate_natural_lang_constraints_async(
     model_kwargs: Optional[dict] = None,
     client: Optional[MarvinClient] = None,
 ):
-
-
     result = await _generate_typed_llm_response_with_tool(
         prompt_template=MODEL_CONSTRAINT_PROMPT,
-        prompt_kwargs=dict(data=data.model_dump_json(), data_type= type(data).__name__ , constraints=constraints),
+        prompt_kwargs=dict(
+            data=data.model_dump_json(),
+            data_type=type(data).__name__,
+            constraints=constraints,
+        ),
         type_=bool,
         model_kwargs=model_kwargs,
         client=client,
@@ -1280,9 +1285,7 @@ class NaturalLangType(BaseModel):
         constraints = self.__class__.natural_lang_constraints()
         if not constraints:
             return self
-        if marvin.ai.text.validate_natural_lang_constraints(
-            self, constraints
-        ):
+        if marvin.ai.text.validate_natural_lang_constraints(self, constraints):
             return self
         else:
             raise ValueError(
@@ -1507,6 +1510,7 @@ def func_contract(
         return result
 
     return wrapper
+
 
 cast_async.map = cast_async_map
 cast.map = cast_map

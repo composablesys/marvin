@@ -49,6 +49,8 @@ class Sad(NaturalLangType):
 
 print(Sad.natural_lang_constraints())
 print(Sad().func())
+
+
 #
 # @marvin.fn
 # def rating_for_customer(customer_profile: str) -> Callable[[str], int]:
@@ -61,10 +63,8 @@ print(Sad().func())
 #     pass
 #
 #
-# rating_func = rating_for_customer(
-#     "asian lady who cares about quality but cost is of greater concern"
-# )
-# rt = rating_func("A wonderful blender that is only $19, on sale from $100")  # return 8
+
+
 #
 #
 # class Location(BaseModel):
@@ -81,11 +81,13 @@ print(Sad().func())
 # print(Location.model_json_schema())
 #
 #
-# def weather_at_city(city: str) -> str:
-#     if city == "San Francisco":
-#         return "Sunny and bright"
-#     if city == "Los Angeles":
-#         return "Cold and Cloudy"
+def weather_at_city(city: str) -> str:
+    if city == "San Francisco":
+        return "Sunny and bright"
+    if city == "Los Angeles":
+        return "Cold and Cloudy"
+
+
 #
 #
 # @marvin.fn
