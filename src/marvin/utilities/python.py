@@ -14,6 +14,32 @@ class ParameterModel(BaseModel):
     default: Optional[str]
 
 
+class CallableWithMetaData(BaseModel):
+    name: str
+    signature: inspect.Signature
+    docstring: Optional[str] = ""
+    func: Optional[Callable] = None
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    @property
+    def __name__(self):
+        return self.name
+
+    @property
+    def __signature__(self):
+        return self.signature
+
+    @property
+    def __doc__(self):
+        return self.docstring
+
+    def __call__(self, *args, **kwargs):
+        if self.func:
+            return self.func(*args, **kwargs)
+
+
 class PythonFunction(BaseModel):
     """
     A Pydantic model representing a Python function.
@@ -86,7 +112,9 @@ class PythonFunction(BaseModel):
             )
             for name, param in sig.parameters.items()
         ]
-        source_code = inspect.getsource(func).strip()
+        source_code = ""
+        if not isinstance(func, CallableWithMetaData):
+            source_code = inspect.getsource(func).strip()
 
         function_dict = {
             "function": func,
@@ -103,18 +131,29 @@ class PythonFunction(BaseModel):
         return cls(**function_dict)
 
     @classmethod
-    def from_function_call(cls, func: Callable, *args, **kwargs) -> "PythonFunction":
+    def from_function_call(
+        cls,
+        func: Callable,
+        extra_render_parameters: Optional[dict],
+        *args,
+        **kwargs,
+    ) -> "PythonFunction":
         """
         Create a PythonFunction instance from a function call.
 
         Args:
             func (Callable): The function to call.
+            extra_render_parameters: extra parameters to be used in the rendering of the prompts
             *args: Positional arguments to pass to the function call.
             **kwargs: Keyword arguments to pass to the function call.
 
         Returns:
             PythonFunction: The created PythonFunction instance, with the return value of the function call set as an attribute.
         """
+        extra_render_parameters = (
+            extra_render_parameters if extra_render_parameters else {}
+        )
+
         sig = inspect.signature(func)
 
         bound = sig.bind(*args, **kwargs)
@@ -126,7 +165,8 @@ class PythonFunction(BaseModel):
 
         # render the docstring with the bound arguments, if it was supplied as jinja
         docstring = Environment.render(
-            func.__doc__ or "", **dict(bound.arguments.items())
+            func.__doc__ or "",
+            **(dict(bound.arguments.items()) | extra_render_parameters),
         )
 
         instance = cls.from_function(

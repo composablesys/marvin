@@ -28,6 +28,7 @@ dependencies = [
     "tzdata>=2023.3",
     "uvicorn>=0.22.0",
     "partialjson>=0.0.5",
+    "docstring_parser>=0.16"
 ]
 
 [project.optional-dependencies]

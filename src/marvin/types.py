@@ -4,8 +4,11 @@ from pathlib import Path
 from typing import Any, Callable, Generic, Literal, Optional, TypeVar, Union
 
 import openai.types.chat
-from openai.types.chat import ChatCompletion
-from pydantic import BaseModel, Field, PrivateAttr, computed_field
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionMessageToolCall,
+)
+from pydantic import BaseModel, Field, PrivateAttr, computed_field, SerializeAsAny
 from typing_extensions import Annotated, Self
 
 from marvin.settings import settings
@@ -68,6 +71,12 @@ class FunctionTool(Tool, Generic[T]):
     function: Optional[Function[T]] = None
 
 
+class ToolOutput(MarvinType):
+    output: Any
+    tool_id: str
+    tool_name: str
+
+
 class ToolSet(MarvinType, Generic[T]):
     tools: Optional[list[Union[FunctionTool[T], Tool]]] = None
     tool_choice: Optional[Union[Literal["auto"], dict[str, Any]]] = None
@@ -109,8 +118,21 @@ class TextContentBlock(MarvinType):
 class BaseMessage(MarvinType):
     """Base schema for messages"""
 
-    content: Union[str, list[Union[ImageFileContentBlock, TextContentBlock]]]
+    content: Optional[Union[str, list[Union[ImageFileContentBlock, TextContentBlock]]]]
     role: str
+
+
+class ToolMessage(BaseMessage):
+    """Schema for Messages pertaining to the result of calling a tool"""
+
+    role: Literal["tool"] = "tool"
+    tool_call_id: str
+
+
+class ChatCompletionMessage(BaseMessage):
+    role: Literal["assistant"]
+    content: Optional[str] = None
+    tool_calls: Optional[list[ChatCompletionMessageToolCall]] = None
 
 
 class Grammar(MarvinType):
@@ -120,12 +142,12 @@ class Grammar(MarvinType):
 
 
 class Prompt(Grammar, ToolSet[T], Generic[T]):
-    messages: list[BaseMessage] = Field(default_factory=list)
+    messages: list[SerializeAsAny[BaseMessage]] = Field(default_factory=list)
 
 
 class ResponseModel(MarvinType):
     model: type
-    name: str = Field(default="FormatResponse")
+    name: str = Field(default="FormatFinalResponse")
     description: str = Field(default="Response format")
 
 
@@ -181,9 +203,9 @@ class TranscriptRequest(MarvinType):
             " supplying spelling of complex words, including filler vocalizations, etc."
         ),
     )
-    response_format: Optional[
-        Literal["json", "text", "srt", "verbose_json", "vtt"]
-    ] = None
+    response_format: Optional[Literal["json", "text", "srt", "verbose_json", "vtt"]] = (
+        None
+    )
     language: Optional[str] = None
     temperature: Optional[float] = None
 
@@ -192,7 +214,7 @@ class ChatResponse(MarvinType):
     model_config = dict(arbitrary_types_allowed=True)
     request: Union[ChatRequest, VisionRequest]
     response: ChatCompletion
-    tool_outputs: list[Any] = []
+    tool_outputs: list[ToolOutput] = []
 
 
 class ImageRequest(MarvinType):
@@ -352,3 +374,11 @@ class Audio(MarvinType):
         import marvin.audio
 
         marvin.audio.play_audio(self.data)
+
+
+class Predicate(MarvinType):
+    func: Callable
+    constraint: str
+
+    def __call__(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
